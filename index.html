@@ -1,0 +1,3856 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>人員工作分配與 Web GIS 導航系統</title>
+  <meta name="description" content="整合團隊人力調度、月／日曆排程連動與 TWD97 Web GIS 空間定位及 Google Maps 一鍵導航之系統。" />
+  <meta property="og:title" content="人員工作分配與 Web GIS 導航系統" />
+  <meta property="og:description" content="整合團隊人力調度、月／日曆排程連動與 TWD97 Web GIS 空間定位及 Google Maps 一鍵導航之系統。" />
+  <meta property="og:type" content="website" />
+  <meta name="twitter:card" content="summary_large_image" />
+
+  <!-- Typography: Plus Jakarta Sans + Noto Sans TC + JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700&display=swap" rel="stylesheet" />
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', '"Noto Sans TC"', 'system-ui', '-apple-system', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace'],
+          },
+          colors: {
+            ocean: {
+              50: '#F0F6FB',
+              100: '#DCEAF6',
+              600: '#0F4C81',
+              700: '#0C3E69',
+              800: '#093052',
+            },
+          },
+        },
+      },
+    };
+  </script>
+
+  <!-- Leaflet.js CSS & JS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+
+  <!-- Proj4js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.11.0/proj4.js" crossorigin=""></script>
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+
+  <style>
+    :root {
+      color-scheme: light;
+    }
+    html, body {
+      height: 100%;
+      margin: 0;
+      background-color: #F8FAFC;
+      color: #0F172A;
+      font-family: 'Plus Jakarta Sans', 'Noto Sans TC', system-ui, -apple-system, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    .hidden {
+      display: none !important;
+    }
+    .tabular-nums {
+      font-variant-numeric: tabular-nums;
+    }
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+    .thin-scroll::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    .thin-scroll::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .thin-scroll::-webkit-scrollbar-thumb {
+      background: #CBD5E1;
+      border-radius: 9999px;
+    }
+    .thin-scroll::-webkit-scrollbar-thumb:hover {
+      background: #94A3B8;
+    }
+
+    /* Custom Leaflet DivIcon Marker Styles */
+    .gis-pin-wrapper {
+      background: transparent;
+      border: none;
+    }
+    .gis-pin {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 180ms cubic-bezier(0.16, 1, 0.3, 1), opacity 180ms ease;
+    }
+    .gis-pin-halo {
+      position: absolute;
+      inset: -6px;
+      border-radius: 9999px;
+      background: rgba(245, 158, 11, 0.35);
+      animation: gisPulse 1.6s cubic-bezier(0, 0, 0.2, 1) infinite;
+      pointer-events: none;
+    }
+    .gis-pin-halo.emerald {
+      background: rgba(16, 185, 129, 0.35);
+    }
+    @keyframes gisPulse {
+      0% { transform: scale(0.85); opacity: 0.9; }
+      70% { transform: scale(1.75); opacity: 0; }
+      100% { transform: scale(1.75); opacity: 0; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .gis-pin-halo {
+        animation: none;
+      }
+      * {
+        scroll-behavior: auto !important;
+      }
+    }
+    .leaflet-tooltip.gis-tooltip {
+      background: #0F172A;
+      color: #FFFFFF;
+      border: 1px solid rgba(255,255,255,0.16);
+      border-radius: 10px;
+      padding: 8px 11px;
+      font-family: 'Plus Jakarta Sans', 'Noto Sans TC', sans-serif;
+      font-size: 12px;
+      font-weight: 600;
+      line-height: 1.45;
+      white-space: normal;
+      max-width: 230px;
+      min-width: 128px;
+      box-shadow: 0 8px 20px rgba(15, 23, 42, 0.24);
+    }
+    .leaflet-tooltip.gis-tooltip::before {
+      border-top-color: #0F172A;
+    }
+    .drag-over-cell {
+      background-color: #FEF3C7 !important;
+      outline: 2px dashed #F59E0B !important;
+      outline-offset: -2px;
+    }
+    .drag-over-forbidden {
+      background-color: #FEE2E2 !important;
+      outline: 2px dashed #DC2626 !important;
+      outline-offset: -2px;
+      cursor: not-allowed !important;
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-900 overflow-hidden">
+
+  <!-- =========================================================
+       LOGIN SCREEN (Zero hardcoded passwords)
+  ========================================================== -->
+  <div id="login-screen" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-100 p-4">
+    <div class="w-full max-w-md bg-white border border-slate-200 rounded-2xl shadow-sm p-8">
+      <div class="mb-6">
+        <div class="inline-flex items-center justify-center w-11 h-11 rounded-xl bg-ocean-600 text-white mb-4">
+          <i data-lucide="compass" class="w-6 h-6"></i>
+        </div>
+        <h1 class="text-xl font-bold text-slate-900 tracking-tight" style="text-wrap: balance;">
+          GPS外業工作分配系統
+        </h1>
+        <p class="mt-1.5 text-sm text-slate-500">
+          請輸入系統通行密碼以載入團隊排程與空間導航圖資。
+        </p>
+      </div>
+
+      <form id="login-form" class="space-y-4">
+        <div>
+          <label for="login-password" class="block text-sm font-medium text-slate-700 mb-1.5">
+            系統通行密碼
+          </label>
+          <div class="relative">
+            <input
+              id="login-password"
+              type="password"
+              required
+              autocomplete="current-password"
+              placeholder="請輸入檢視或管理密碼"
+              class="w-full h-11 px-3.5 pr-11 text-sm bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-ocean-600/20 focus:border-ocean-600 transition-colors"
+            />
+            <button
+              type="button"
+              id="toggle-password-visibility"
+              aria-label="切換密碼顯示"
+              class="absolute right-1 top-1 w-9 h-9 flex items-center justify-center text-slate-400 hover:text-slate-600 rounded-lg"
+            >
+              <i data-lucide="eye" class="w-4 h-4"></i>
+            </button>
+          </div>
+        </div>
+
+        <div id="login-error" class="hidden text-xs font-medium text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2.5"></div>
+
+        <button
+          type="submit"
+          id="login-submit-btn"
+          class="w-full h-11 bg-ocean-600 hover:bg-ocean-700 active:scale-[0.99] text-white text-sm font-semibold rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+        >
+          <span>驗證並進入系統</span>
+          <i data-lucide="arrow-right" class="w-4 h-4"></i>
+        </button>
+      </form>
+
+      <div class="mt-6 pt-5 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400">
+        <span>臺東縣政府 地政處</span>
+        <span>安全 Token 驗證機制</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================
+       MAIN WORKSPACE SHELL
+  ========================================================== -->
+  <div id="app-shell" class="hidden h-screen w-screen flex flex-col overflow-hidden bg-slate-50">
+
+    <!-- TOP HEADER (Single-row compact bar) -->
+    <header class="h-14 shrink-0 bg-white border-b border-slate-200 px-3 lg:px-5 flex items-center justify-between gap-4 z-30">
+      <!-- Zone 1: Brand wordmark -->
+      <div class="flex items-center gap-2.5 min-w-0">
+        <div class="w-8 h-8 rounded-lg bg-ocean-600 text-white flex items-center justify-center shrink-0">
+          <i data-lucide="map-pin" class="w-4 h-4"></i>
+        </div>
+        <span class="text-sm lg:text-base font-bold text-slate-900 tracking-tight truncate">
+          人員工作分配與 Web GIS 導航系統
+        </span>
+      </div>
+
+      <!-- Zone 2: Active date & sync status (desktop) -->
+      <div class="hidden lg:flex items-center gap-4 text-xs text-slate-600 shrink-0">
+        <span class="tabular-nums">今日 <strong id="header-today-date" class="font-semibold text-slate-900 font-mono"></strong></span>
+        <span class="text-slate-300" aria-hidden="true">·</span>
+        <span class="tabular-nums">查詢日期 <strong id="header-active-date" class="font-semibold text-ocean-600 font-mono"></strong></span>
+      </div>
+
+      <!-- Zone 3: Role & Sync & Logout -->
+      <div class="flex items-center gap-2.5 shrink-0">
+        <div id="sync-status-indicator" class="hidden items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-md border"></div>
+        <span id="role-indicator" class="text-xs font-semibold px-2.5 py-1 rounded-md whitespace-nowrap shrink-0"></span>
+        <button
+          type="button"
+          id="logout-btn"
+          class="h-9 px-3 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0"
+        >
+          <i data-lucide="log-out" class="w-3.5 h-3.5"></i>
+          <span>登出</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- MOBILE SEGMENTED NAVIGATION BAR (< 1024px) -->
+    <nav id="mobile-tab-bar" class="lg:hidden shrink-0 bg-white border-b border-slate-200 px-3 py-1.5 z-20">
+      <div class="grid grid-cols-3 gap-1 p-1 bg-slate-100 rounded-xl">
+        <button type="button" data-mobile-tab="0" class="mobile-tab-btn min-h-[36px] text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1.5 whitespace-nowrap">
+          <i data-lucide="users" class="w-3.5 h-3.5"></i>
+          <span>清單</span>
+        </button>
+        <button type="button" data-mobile-tab="1" class="mobile-tab-btn min-h-[36px] text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1.5 whitespace-nowrap">
+          <i data-lucide="calendar-days" class="w-3.5 h-3.5"></i>
+          <span>行事曆</span>
+        </button>
+        <button type="button" data-mobile-tab="2" class="mobile-tab-btn min-h-[36px] text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1.5 whitespace-nowrap">
+          <i data-lucide="map" class="w-3.5 h-3.5"></i>
+          <span>地圖</span>
+        </button>
+      </div>
+    </nav>
+
+    <!-- INITIAL LOADING OVERLAY -->
+    <div id="data-loading-overlay" class="hidden flex-1 flex flex-col items-center justify-center gap-3 bg-slate-50">
+      <div class="w-8 h-8 border-2 border-slate-200 border-t-ocean-600 rounded-full animate-spin"></div>
+      <p class="text-sm font-medium text-slate-600">正在從 Google Sheets 載入人員、地點與排程資料...</p>
+    </div>
+
+    <!-- MAIN CONTENT WORKBENCH
+         Desktop: 3-column flex (w-[340px] + flex-1 + w-[42%])
+         Mobile: 3-page horizontal scroll-snap container
+    -->
+    <main
+      id="workbench-container"
+      class="flex-1 min-h-0 flex flex-row overflow-x-auto lg:overflow-hidden snap-x snap-mandatory lg:snap-none no-scrollbar relative"
+    >
+      <!-- =====================================================
+           COLUMN / PAGE 1: LEFT RESOURCE PANEL (Personnel + Locations)
+      ====================================================== -->
+      <section
+        id="page-resources"
+        class="w-full lg:w-[340px] shrink-0 snap-center h-full flex flex-col bg-white lg:border-r border-slate-200 min-h-0 relative"
+      >
+        <!-- Top Reset / Filter Action Bar -->
+        <div class="px-3.5 py-2.5 border-b border-slate-200 bg-slate-50/70 flex items-center justify-between gap-2 shrink-0">
+          <div id="active-filter-caption" class="text-xs text-slate-600 truncate font-medium">
+            顯示全部資源
+          </div>
+          <button
+            type="button"
+            id="reset-selection-btn"
+            class="h-8 px-3 text-xs font-semibold rounded-lg border transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0"
+          >
+            <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
+            <span>清除選取</span>
+          </button>
+        </div>
+
+        <!-- Upper 50%: Personnel Accordions -->
+        <div class="flex-1 min-h-0 flex flex-col border-b border-slate-200">
+          <div class="px-3.5 py-2.5 border-b border-slate-100 flex items-center justify-between gap-2 shrink-0 bg-white">
+            <div class="min-w-0">
+              <h2 class="text-sm font-bold text-slate-900 flex items-center gap-1.5">
+                <i data-lucide="users" class="w-4 h-4 text-ocean-600 shrink-0"></i>
+                <span>人員清單</span>
+                <span id="personnel-count" class="text-xs font-mono tabular-nums font-medium text-slate-400"></span>
+              </h2>
+              <p id="personnel-context-hint" class="text-[11px] text-slate-500 truncate mt-0.5 hidden"></p>
+            </div>
+            <button
+              type="button"
+              id="add-person-btn"
+              class="admin-only hidden h-8 px-2.5 text-xs font-semibold text-white bg-ocean-600 hover:bg-ocean-700 rounded-lg transition-colors items-center gap-1 whitespace-nowrap shrink-0"
+            >
+              <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+              <span>新增人員</span>
+            </button>
+          </div>
+          <div id="personnel-list-container" class="flex-1 min-h-0 overflow-y-auto thin-scroll p-2.5 space-y-2">
+            <!-- Dynamically rendered -->
+          </div>
+        </div>
+
+        <!-- Lower 50%: Locations Accordions + Search -->
+        <div class="flex-1 min-h-0 flex flex-col">
+          <div class="px-3.5 py-2.5 border-b border-slate-100 space-y-2 shrink-0 bg-white">
+            <div class="flex items-center justify-between gap-2">
+              <h2 class="text-sm font-bold text-slate-900 flex items-center gap-1.5">
+                <i data-lucide="map-pinned" class="w-4 h-4 text-ocean-600 shrink-0"></i>
+                <span>工作地點</span>
+                <span id="location-count" class="text-xs font-mono tabular-nums font-medium text-slate-400"></span>
+              </h2>
+              <button
+                type="button"
+                id="add-location-btn"
+                class="admin-only hidden h-8 px-2.5 text-xs font-semibold text-white bg-ocean-600 hover:bg-ocean-700 rounded-lg transition-colors items-center gap-1 whitespace-nowrap shrink-0"
+              >
+                <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+                <span>新增地點</span>
+              </button>
+            </div>
+            <div class="relative">
+              <i data-lucide="search" class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+              <input
+                id="location-search-input"
+                type="search"
+                placeholder="搜尋地點名稱或主責單位..."
+                class="w-full h-9 pl-8 pr-3 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-ocean-600 focus:ring-2 focus:ring-ocean-600/15 transition-colors"
+              />
+            </div>
+          </div>
+          <div id="locations-list-container" class="flex-1 min-h-0 overflow-y-auto thin-scroll p-2.5 space-y-2">
+            <!-- Dynamically rendered -->
+          </div>
+        </div>
+      </section>
+
+      <!-- =====================================================
+           COLUMN / PAGE 2: CENTER CALENDAR PANEL (Month / Day)
+      ====================================================== -->
+      <section
+        id="page-calendar"
+        class="w-full lg:flex-1 lg:min-w-0 shrink-0 snap-center h-full flex flex-col bg-slate-50/70 lg:border-r border-slate-200 min-h-0 relative"
+      >
+        <!-- Calendar Toolbar -->
+        <div class="px-3.5 py-2.5 bg-white border-b border-slate-200 flex flex-wrap items-center justify-between gap-2 shrink-0">
+          <div class="flex items-center gap-2">
+            <div class="flex items-center border border-slate-200 rounded-lg bg-white overflow-hidden">
+              <button type="button" id="cal-prev-btn" aria-label="上一區間" class="w-9 h-8 flex items-center justify-center text-slate-600 hover:bg-slate-100 transition-colors">
+                <i data-lucide="chevron-left" class="w-4 h-4"></i>
+              </button>
+              <button type="button" id="cal-today-btn" class="h-8 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-100 border-x border-slate-200 transition-colors whitespace-nowrap">
+                今天
+              </button>
+              <button type="button" id="cal-next-btn" aria-label="下一區間" class="w-9 h-8 flex items-center justify-center text-slate-600 hover:bg-slate-100 transition-colors">
+                <i data-lucide="chevron-right" class="w-4 h-4"></i>
+              </button>
+            </div>
+            <h2 id="calendar-heading-title" class="text-sm lg:text-base font-bold text-slate-900 font-mono tabular-nums whitespace-nowrap"></h2>
+          </div>
+
+          <!-- Month / Day Segmented Switch -->
+          <div class="flex items-center gap-2">
+            <div class="flex items-center gap-1 p-1 bg-slate-100 rounded-lg">
+              <button type="button" data-cal-view="month" class="cal-view-btn px-3 py-1 text-xs font-semibold rounded-md transition-colors whitespace-nowrap">
+                月曆
+              </button>
+              <button type="button" data-cal-view="day" class="cal-view-btn px-3 py-1 text-xs font-semibold rounded-md transition-colors whitespace-nowrap">
+                日曆明細
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Admin Drag Tip Banner (only in admin desktop month view) -->
+        <div id="admin-drag-banner" class="admin-only hidden px-3.5 py-2 bg-ocean-50 border-b border-ocean-100 text-[11px] text-ocean-700 items-start gap-1.5 shrink-0">
+          <i data-lucide="grip-vertical" class="w-3.5 h-3.5 shrink-0 mt-0.5"></i>
+          <span class="flex-1 min-w-0 leading-relaxed whitespace-normal break-words">提示：可從左側拖曳「人員卡片」至日曆日期格派工，或點擊日期右上角「+ 派工」進行批次管理。</span>
+        </div>
+
+        <!-- Calendar Body (Month Grid or Day Detail) -->
+        <div id="calendar-body-container" class="flex-1 min-h-0 overflow-y-auto thin-scroll p-2.5 lg:p-3.5">
+          <!-- Dynamically rendered -->
+        </div>
+      </section>
+
+      <!-- =====================================================
+           COLUMN / PAGE 3: RIGHT WEB GIS MAP PANEL
+      ====================================================== -->
+      <section
+        id="page-map"
+        class="w-full lg:w-[42%] lg:min-w-[360px] shrink-0 snap-center h-full relative bg-slate-200 min-h-0"
+      >
+        <div id="gis-map" class="w-full h-full z-0"></div>
+
+        <!-- Top-Left Map Filter Status Banner -->
+        <div id="map-status-banner" class="absolute top-3 left-3 z-[400] max-w-[calc(100%-12.5rem)] bg-white/95 backdrop-blur-md border border-slate-200 rounded-xl px-3 py-2 shadow-sm pointer-events-auto">
+          <div id="map-status-title" class="text-xs font-bold text-slate-900 truncate"></div>
+          <div id="map-status-sub" class="text-[11px] text-slate-500 truncate mt-0.5 tabular-nums"></div>
+        </div>
+
+        <!-- Top-Right 4-Layer Switcher Control -->
+        <div class="absolute top-3 right-3 z-[400] flex flex-col items-end gap-1.5">
+          <button
+            type="button"
+            id="layer-switcher-toggle"
+            class="h-9 px-3 bg-white/95 backdrop-blur-md border border-slate-200 rounded-xl shadow-sm text-xs font-semibold text-slate-700 hover:text-slate-900 flex items-center gap-1.5 transition-colors"
+          >
+            <i data-lucide="layers" class="w-4 h-4 text-ocean-600"></i>
+            <span id="current-layer-label">臺灣通用電子地圖</span>
+            <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-slate-400"></i>
+          </button>
+          <div id="layer-switcher-menu" class="hidden w-52 bg-white border border-slate-200 rounded-xl shadow-lg p-1.5 space-y-0.5">
+            <button type="button" data-layer="emap" class="layer-option w-full text-left px-3 py-2 rounded-lg text-xs font-medium flex items-center justify-between transition-colors">
+              <span>臺灣通用電子地圖</span>
+              <span class="layer-check hidden text-ocean-600 font-bold">✓</span>
+            </button>
+            <button type="button" data-layer="photo2" class="layer-option w-full text-left px-3 py-2 rounded-lg text-xs font-medium flex items-center justify-between transition-colors">
+              <span>臺灣正射影像（航照圖）</span>
+              <span class="layer-check hidden text-ocean-600 font-bold">✓</span>
+            </button>
+            <button type="button" data-layer="mix" class="layer-option w-full text-left px-3 py-2 rounded-lg text-xs font-medium flex items-center justify-between transition-colors">
+              <span>臺灣混和地圖（航照＋路網）</span>
+              <span class="layer-check hidden text-ocean-600 font-bold">✓</span>
+            </button>
+            <button type="button" data-layer="osm" class="layer-option w-full text-left px-3 py-2 rounded-lg text-xs font-medium flex items-center justify-between transition-colors">
+              <span>OpenStreetMap</span>
+              <span class="layer-check hidden text-ocean-600 font-bold">✓</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Bottom-Right Fit All Pins Button -->
+        <button
+          type="button"
+          id="fit-all-pins-btn"
+          title="檢視全部工作地點"
+          class="absolute bottom-6 right-3 z-[400] h-10 px-3 bg-white/95 backdrop-blur-md border border-slate-200 rounded-xl shadow-sm text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-1.5"
+        >
+          <i data-lucide="maximize-2" class="w-3.5 h-3.5 text-ocean-600"></i>
+          <span>全區總覽</span>
+        </button>
+      </section>
+    </main>
+  </div>
+
+  <!-- =========================================================
+       MODALS (Admin CRUD, Drag-Drop Assign, Day Dispatch, Confirm)
+  ========================================================== -->
+
+  <!-- 1. Personnel CRUD Modal -->
+  <div id="modal-personnel" class="hidden fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="w-full max-w-md bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden max-h-[92vh] flex flex-col">
+      <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between shrink-0">
+        <h3 id="modal-personnel-title" class="text-base font-bold text-slate-900">新增人員</h3>
+        <button type="button" data-close-modal="modal-personnel" class="w-8 h-8 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 flex items-center justify-center">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+      <form id="form-personnel" class="p-5 space-y-3.5 overflow-y-auto thin-scroll">
+        <input type="hidden" id="person-id" />
+        <div>
+          <label for="person-unit" class="block text-xs font-semibold text-slate-700 mb-1">所屬單位 *</label>
+          <select id="person-unit" required class="w-full h-10 px-3 text-sm bg-white border border-slate-300 rounded-xl focus:outline-none focus:border-ocean-600">
+            <option value="地政處">地政處</option>
+            <option value="台東所">台東所</option>
+            <option value="成功所">成功所</option>
+            <option value="關山所">關山所</option>
+            <option value="太麻里所">太麻里所</option>
+          </select>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label for="person-name" class="block text-xs font-semibold text-slate-700 mb-1">姓名 *</label>
+            <input id="person-name" required placeholder="例如：王大明" class="w-full h-10 px-3 text-sm border border-slate-300 rounded-xl focus:outline-none focus:border-ocean-600" />
+          </div>
+          <div>
+            <label for="person-plate" class="block text-xs font-semibold text-slate-700 mb-1">車輛車號</label>
+            <input id="person-plate" placeholder="例如：ABC-1234" class="w-full h-10 px-3 text-sm font-mono border border-slate-300 rounded-xl focus:outline-none focus:border-ocean-600" />
+          </div>
+        </div>
+        <div>
+          <label for="person-phone" class="block text-xs font-semibold text-slate-700 mb-1">聯絡電話</label>
+          <input id="person-phone" placeholder="例如：0912-345-678" class="w-full h-10 px-3 text-sm font-mono border border-slate-300 rounded-xl focus:outline-none focus:border-ocean-600" />
+        </div>
+        <div>
+          <label for="person-note" class="block text-xs font-semibold text-slate-700 mb-1">備註事項</label>
+          <textarea id="person-note" rows="2" placeholder="證照、裝備或特殊注意事項" class="w-full p-3 text-sm border border-slate-300 rounded-xl focus:outline-none focus:border-ocean-600 resize-none"></textarea>
+        </div>
+        <div class="pt-1 border-t border-slate-100">
+          <label for="person-leave-date-input" class="block text-xs font-semibold text-slate-700 mb-1.5">請假日期設定（設定後於該日禁止派工）</label>
+          <div class="flex items-center gap-2">
+            <input id="person-leave-date-input" type="date" class="flex-1 h-9 px-3 text-xs font-mono tabular-nums bg-white border border-slate-300 rounded-xl focus:outline-none focus:border-ocean-600" />
+            <button type="button" id="add-leave-date-btn" class="h-9 px-3 text-xs font-semibold text-ocean-700 bg-ocean-50 hover:bg-ocean-100 border border-ocean-200 rounded-xl whitespace-nowrap shrink-0">
+              加入請假日
+            </button>
+          </div>
+          <div id="person-leave-dates-list" class="mt-2 flex flex-wrap gap-1.5 min-h-[24px]">
+            <!-- Dynamically rendered leave date items -->
+          </div>
+        </div>
+        <div class="pt-2 flex items-center justify-end gap-2">
+          <button type="button" data-close-modal="modal-personnel" class="h-10 px-4 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-xl">取消</button>
+          <button type="submit" class="h-10 px-5 text-sm font-semibold text-white bg-ocean-600 hover:bg-ocean-700 rounded-xl">儲存人員</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 2. Location CRUD Modal (with TWD97 validation + live preview map) -->
+  <div id="modal-location" class="hidden fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="w-full max-w-lg bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden max-h-[92vh] flex flex-col">
+      <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between shrink-0">
+        <h3 id="modal-location-title" class="text-base font-bold text-slate-900">新增工作地點</h3>
+        <button type="button" data-close-modal="modal-location" class="w-8 h-8 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 flex items-center justify-center">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+      <form id="form-location" class="p-5 space-y-3.5 overflow-y-auto thin-scroll">
+        <input type="hidden" id="location-id" />
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label for="location-unit" class="block text-xs font-semibold text-slate-700 mb-1">主責單位 *</label>
+            <select id="location-unit" required class="w-full h-10 px-3 text-sm bg-white border border-slate-300 rounded-xl focus:outline-none focus:border-ocean-600">
+              <option value="台東所">台東所</option>
+              <option value="成功所">成功所</option>
+              <option value="關山所">關山所</option>
+              <option value="太麻里所">太麻里所</option>
+            </select>
+          </div>
+          <div>
+            <label for="location-name" class="block text-xs font-semibold text-slate-700 mb-1">地點名稱 *</label>
+            <input id="location-name" required placeholder="例如：大安溪橋墩檢測點" class="w-full h-10 px-3 text-sm border border-slate-300 rounded-xl focus:outline-none focus:border-ocean-600" />
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label for="location-x" class="block text-xs font-semibold text-slate-700 mb-1">TWD97 121 X (東距) *</label>
+            <input id="location-x" type="number" step="any" required placeholder="140000 ~ 360000" class="w-full h-10 px-3 text-sm font-mono tabular-nums border border-slate-300 rounded-xl focus:outline-none focus:border-ocean-600" />
+          </div>
+          <div>
+            <label for="location-y" class="block text-xs font-semibold text-slate-700 mb-1">TWD97 121 Y (北距) *</label>
+            <input id="location-y" type="number" step="any" required placeholder="2400000 ~ 2800000" class="w-full h-10 px-3 text-sm font-mono tabular-nums border border-slate-300 rounded-xl focus:outline-none focus:border-ocean-600" />
+          </div>
+        </div>
+
+        <div id="location-coord-status" class="text-xs rounded-xl px-3 py-2 border bg-slate-50 border-slate-200 text-slate-600 font-mono tabular-nums">
+          輸入 TWD97 X / Y 座標後將即時顯示 WGS84 經緯度與地圖預覽。
+        </div>
+
+        <div id="location-preview-map" class="w-full h-44 rounded-xl border border-slate-200 bg-slate-100 overflow-hidden"></div>
+
+        <div class="pt-1 flex items-center justify-end gap-2">
+          <button type="button" data-close-modal="modal-location" class="h-10 px-4 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-xl">取消</button>
+          <button type="submit" id="location-submit-btn" class="h-10 px-5 text-sm font-semibold text-white bg-ocean-600 hover:bg-ocean-700 rounded-xl">儲存地點</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 3. Drag-and-Drop Multi-Location Ordered Assign Modal -->
+  <div id="modal-assign-location" class="hidden fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="w-full max-w-md bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden max-h-[88vh] flex flex-col">
+      <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between shrink-0">
+        <div>
+          <h3 class="text-base font-bold text-slate-900">指派工作地點（可複選排序）</h3>
+          <p id="assign-modal-subtitle" class="text-xs text-slate-500 mt-0.5 tabular-nums"></p>
+        </div>
+        <button type="button" data-close-modal="modal-assign-location" class="w-8 h-8 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 flex items-center justify-center">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+      <div class="p-4 space-y-3 overflow-y-auto thin-scroll flex-1 min-h-0">
+        <div id="assign-order-preview" class="text-xs bg-ocean-50 border border-ocean-200 text-ocean-900 rounded-xl p-3 space-y-1.5">
+          <!-- Dynamically populated with ordered selection preview -->
+        </div>
+        <div class="relative">
+          <i data-lucide="search" class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2"></i>
+          <input id="assign-loc-search" type="search" placeholder="搜尋工作地點..." class="w-full h-9 pl-8 pr-3 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:bg-white focus:border-ocean-600" />
+        </div>
+        <div id="assign-location-list" class="space-y-1.5 max-h-64 overflow-y-auto thin-scroll">
+          <!-- Dynamically rendered ordered checkbox location cards -->
+        </div>
+      </div>
+      <div class="px-5 py-3.5 border-t border-slate-100 flex items-center justify-between gap-2 shrink-0 bg-slate-50">
+        <button type="button" id="assign-clear-btn" class="hidden h-9 px-3 text-xs font-semibold text-red-600 hover:bg-red-50 rounded-lg">
+          移除當日派工
+        </button>
+        <div class="flex items-center gap-2 ml-auto">
+          <button type="button" data-close-modal="modal-assign-location" class="h-9 px-4 text-xs font-medium text-slate-600 hover:bg-slate-200/60 rounded-xl">取消</button>
+          <button type="button" id="assign-confirm-btn" class="h-9 px-5 text-xs font-semibold text-white bg-ocean-600 hover:bg-ocean-700 rounded-xl disabled:opacity-50">確認派工</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. Touch / Batch Date Dispatch Manager Modal -->
+  <div id="modal-day-dispatch" class="hidden fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="w-full max-w-2xl bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden max-h-[90vh] flex flex-col">
+      <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between shrink-0">
+        <div>
+          <h3 class="text-base font-bold text-slate-900">當日派工管理</h3>
+          <p id="day-dispatch-subtitle" class="text-xs text-slate-500 mt-0.5 font-mono tabular-nums"></p>
+        </div>
+        <button type="button" data-close-modal="modal-day-dispatch" class="w-8 h-8 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 flex items-center justify-center">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <div class="p-5 overflow-y-auto thin-scroll space-y-5 flex-1 min-h-0">
+        <!-- Existing schedules for this date -->
+        <div>
+          <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+            <h4 class="text-xs font-bold text-slate-700">已排定派工紀錄</h4>
+            <span class="text-[11px] text-slate-400">多地點可拖曳調整順序，點擊按鈕右側 × 可直接移除單一地點</span>
+          </div>
+          <div id="day-dispatch-existing" class="space-y-2">
+            <!-- Dynamically rendered -->
+          </div>
+        </div>
+
+        <hr class="border-slate-100" />
+
+        <!-- Batch assign section -->
+        <div class="space-y-3">
+          <h4 class="text-xs font-bold text-slate-700">批次追加派工</h4>
+          <div>
+            <label for="batch-location-search" class="block text-xs font-medium text-slate-600 mb-1.5">1. 選擇目標工作地點</label>
+            <div class="space-y-1.5">
+              <div class="relative">
+                <i data-lucide="search" class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+                <input type="text" id="batch-location-search" placeholder="輸入地點名稱或轄區單位關鍵字篩選..." class="w-full h-9 pl-8 pr-3 text-xs bg-white border border-slate-300 rounded-xl focus:outline-none focus:border-ocean-600" />
+              </div>
+              <select id="batch-location-select" class="w-full h-10 px-3 text-sm bg-white border border-slate-300 rounded-xl focus:outline-none focus:border-ocean-600"></select>
+            </div>
+          </div>
+          <div>
+            <div class="flex items-center justify-between mb-1.5 gap-2">
+              <label class="text-xs font-medium text-slate-600">2. 勾選當日出席人員（支援同日多地點追加；已排同地點者不可重複勾選）</label>
+              <span id="batch-selected-count" class="text-xs font-mono tabular-nums text-ocean-600 font-semibold whitespace-nowrap shrink-0">已選 0 人</span>
+            </div>
+            <div id="batch-personnel-checklist" class="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-56 overflow-y-auto thin-scroll p-1">
+              <!-- Dynamically rendered -->
+            </div>
+          </div>
+          <div id="batch-conflict-notice" class="hidden text-xs bg-ocean-50 border border-ocean-200 text-ocean-900 rounded-xl p-3"></div>
+        </div>
+      </div>
+
+      <div class="px-5 py-3.5 border-t border-slate-100 bg-slate-50 flex items-center justify-end gap-2 shrink-0">
+        <button type="button" data-close-modal="modal-day-dispatch" class="h-10 px-4 text-xs font-medium text-slate-600 hover:bg-slate-200/60 rounded-xl">關閉</button>
+        <button type="button" id="batch-assign-submit-btn" class="h-10 px-5 text-xs font-semibold text-white bg-ocean-600 hover:bg-ocean-700 rounded-xl disabled:opacity-50">確認批次派工</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. Custom Confirm Modal (No window.confirm!) -->
+  <div id="modal-confirm" class="hidden fixed inset-0 z-[60] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="w-full max-w-sm bg-white border border-slate-200 rounded-2xl shadow-xl p-5 space-y-4">
+      <div class="space-y-1.5">
+        <h3 id="confirm-title" class="text-base font-bold text-slate-900">確認操作</h3>
+        <p id="confirm-message" class="text-sm text-slate-600 leading-relaxed"></p>
+      </div>
+      <div class="flex items-center justify-end gap-2">
+        <button type="button" id="confirm-cancel-btn" class="h-9 px-4 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-xl">取消</button>
+        <button type="button" id="confirm-ok-btn" class="h-9 px-4 text-xs font-semibold text-white bg-red-600 hover:bg-red-700 rounded-xl">確定</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST NOTIFICATION -->
+  <div id="toast-container" class="fixed bottom-5 left-1/2 -translate-x-1/2 z-[70] flex flex-col gap-2 pointer-events-none"></div>
+
+  <!-- FLOATING REAL-TIME DRAG GHOST (Normal vs Forbidden on Leave Dates) -->
+  <div id="drag-ghost-pill" class="hidden fixed top-0 left-0 z-[80] pointer-events-none px-3 py-2 rounded-xl border-2 shadow-xl text-xs font-bold flex items-center gap-2 whitespace-nowrap"></div>
+
+  <!-- FLOATING CALENDAR NAME LIST TOOLTIP -->
+  <div id="cal-hover-tooltip" class="hidden fixed top-0 left-0 z-[75] pointer-events-none max-w-[260px] px-2.5 py-1.5 rounded-lg bg-slate-900 text-white text-[11px] leading-relaxed shadow-lg border border-slate-700/80 whitespace-normal break-words"></div>
+
+  <!-- =========================================================
+       APPLICATION JAVASCRIPT (Pure ES6+, Zero External Build)
+  ========================================================== -->
+  <script>
+    (function () {
+      'use strict';
+
+      // =====================================================
+      // 1. CONFIGURATION & PROJ4 SETUP
+      // =====================================================
+      const GAS_API_URL = "https://script.google.com/macros/s/AKfycbz8_Dyd3Sv-orTkEwMfxaMygrFgBGJrqRl-Vrq70puhyElo2JAKVePdO5iGOkPoWKg/exec";
+
+      const PERSONNEL_UNITS = ['地政處', '台東所', '成功所', '關山所', '太麻里所'];
+      const LOCATION_UNITS = ['台東所', '成功所', '關山所', '太麻里所'];
+
+      const STORAGE_KEYS = {
+        TOKEN: 'gis_dispatch_token',
+        ROLE: 'gis_dispatch_role',
+      };
+
+      // TWD97 TM2 121-degree zone (EPSG:3826) -> WGS84 (EPSG:4326)
+      if (window.proj4) {
+        proj4.defs(
+          "EPSG:3826",
+          "+proj=tmerc +lat_0=0 +lon_0=121 +k=0.9999 +x_0=250000 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs"
+        );
+      }
+
+      function twd97ToWgs84(x, y) {
+        const nx = Number(x);
+        const ny = Number(y);
+        if (!Number.isFinite(nx) || !Number.isFinite(ny) || !window.proj4) return null;
+        if (nx < 100000 || nx > 400000 || ny < 2300000 || ny > 2900000) return null;
+        try {
+          const [lng, lat] = proj4("EPSG:3826", "EPSG:4326", [nx, ny]);
+          if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+          return { lat, lng };
+        } catch {
+          return null;
+        }
+      }
+
+      function isTwd97InStrictBounds(x, y) {
+        const nx = Number(x);
+        const ny = Number(y);
+        return (
+          Number.isFinite(nx) &&
+          Number.isFinite(ny) &&
+          nx >= 140000 && nx <= 360000 &&
+          ny >= 2400000 && ny <= 2800000
+        );
+      }
+
+      // =====================================================
+      // 2. DATE & FORMATTING UTILITIES
+      // =====================================================
+      function formatDateLocal(dateObj) {
+        const y = dateObj.getFullYear();
+        const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+        const d = String(dateObj.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
+      }
+
+      function getTodayStr() {
+        return formatDateLocal(new Date());
+      }
+
+      function parseDateLocal(dateStr) {
+        const parts = String(dateStr || '').split('-').map(Number);
+        if (parts.length !== 3 || parts.some(isNaN)) return new Date();
+        return new Date(parts[0], parts[1] - 1, parts[2]);
+      }
+
+      function addDays(dateStr, delta) {
+        const d = parseDateLocal(dateStr);
+        d.setDate(d.getDate() + delta);
+        return formatDateLocal(d);
+      }
+
+      function getWeekdayLabel(dateStr) {
+        const names = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
+        return names[parseDateLocal(dateStr).getDay()];
+      }
+
+      function escapeHtml(str) {
+        if (str === null || str === undefined) return '';
+        return String(str)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
+      // Deterministic soft Morandi unit color palette
+      const UNIT_PALETTE = [
+        { dot: '#5B7C99', bg: '#F1F5F9', text: '#334155', border: '#CBD5E1' }, // Dusty Blue
+        { dot: '#6B8E78', bg: '#F2F7F4', text: '#2F4F3E', border: '#C6DACD' }, // Sage Green
+        { dot: '#A3826C', bg: '#F8F4F1', text: '#5C4332', border: '#DFD2C8' }, // Warm Sand
+        { dot: '#7C7498', bg: '#F4F3F8', text: '#423D5C', border: '#D4D0E2' }, // Muted Lavender
+        { dot: '#548C94', bg: '#F0F7F8', text: '#294D52', border: '#C4DDE0' }, // Slate Teal
+        { dot: '#9E7682', bg: '#F8F3F5', text: '#593A44', border: '#DFCBD1' }, // Dusty Rose
+      ];
+
+      function getUnitColor(unitName) {
+        const str = String(unitName || '未分類');
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) {
+          hash = ((hash << 5) - hash + str.charCodeAt(i)) | 0;
+        }
+        return UNIT_PALETTE[Math.abs(hash) % UNIT_PALETTE.length];
+      }
+
+      function refreshLucide() {
+        if (window.lucide && typeof window.lucide.createIcons === 'function') {
+          window.lucide.createIcons();
+        }
+      }
+
+      // =====================================================
+      // 3. APPLICATION STATE
+      // =====================================================
+      const todayStr = getTodayStr();
+      const todayParts = parseDateLocal(todayStr);
+
+      const state = {
+        token: sessionStorage.getItem(STORAGE_KEYS.TOKEN) || null,
+        role: sessionStorage.getItem(STORAGE_KEYS.ROLE) || null,
+        personnel: [],
+        locations: [],
+        schedules: [],
+
+        // 4-way linkage state (selectedPersonId & selectedLocationId are mutually exclusive)
+        selectedPersonId: null,
+        selectedLocationId: null,
+        expandedLocationCardId: null,
+        activeDate: todayStr,
+        dateFilterActive: false,
+
+        // UI & Calendar state
+        calendarView: 'month', // 'month' | 'day'
+        calendarYear: todayParts.getFullYear(),
+        calendarMonth: todayParts.getMonth(), // 0-11
+        locationSearch: '',
+        expandedPersonnelUnits: new Set(),
+        expandedLocationUnits: new Set(),
+        mobilePage: 0,
+
+        // Drag state
+        draggedPersonId: null,
+        dragHoveredDate: null,
+        dragHoveredForbidden: false,
+
+        // Sync queue state
+        mutationQueue: [],
+        isProcessingQueue: false,
+        syncStatus: 'idle', // 'idle' | 'syncing' | 'saved' | 'error'
+        syncTimer: null,
+
+        // Active modal context
+        editingLeaveDates: [],
+        assignModalCtx: null, // { personId, date, selectedLocationId }
+        dayDispatchDate: null,
+        pendingConfirmFn: null,
+      };
+
+      // =====================================================
+      // 4. API CLIENT (POST text/plain;charset=utf-8 to avoid CORS preflight)
+      // =====================================================
+      async function callGasApi(payload) {
+        const response = await fetch(GAS_API_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'text/plain;charset=utf-8',
+          },
+          body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) {
+          throw new Error(`網路連線錯誤 (${response.status})`);
+        }
+
+        const json = await response.json();
+        if (json && json.code === 'UNAUTHORIZED') {
+          handleUnauthorized();
+          throw new Error('登入憑證已過期，請重新登入');
+        }
+        return json;
+      }
+
+      function handleUnauthorized() {
+        sessionStorage.removeItem(STORAGE_KEYS.TOKEN);
+        sessionStorage.removeItem(STORAGE_KEYS.ROLE);
+        state.token = null;
+        state.role = null;
+        showLoginScreen('登入憑證已逾時或無效，請重新輸入密碼。');
+      }
+
+      // =====================================================
+      // 5. TOAST & CUSTOM CONFIRM DIALOG
+      // =====================================================
+      function showToast(message, type = 'info') {
+        const container = document.getElementById('toast-container');
+        const el = document.createElement('div');
+        const palette = {
+          info: 'bg-slate-900 text-white border-slate-800',
+          success: 'bg-emerald-700 text-white border-emerald-600',
+          warning: 'bg-amber-600 text-white border-amber-500',
+          error: 'bg-red-700 text-white border-red-600',
+        };
+        el.className = `pointer-events-auto px-4 py-2.5 rounded-xl border shadow-lg text-xs font-semibold flex items-center gap-2 transition-all duration-200 ${palette[type] || palette.info}`;
+        el.textContent = message;
+        container.appendChild(el);
+        setTimeout(() => {
+          el.style.opacity = '0';
+          el.style.transform = 'translateY(6px)';
+          setTimeout(() => el.remove(), 200);
+        }, 3200);
+      }
+
+      function openConfirmDialog({ title, message, okLabel = '確定', okVariant = 'danger', onConfirm }) {
+        document.getElementById('confirm-title').textContent = title || '確認操作';
+        document.getElementById('confirm-message').textContent = message || '';
+        const okBtn = document.getElementById('confirm-ok-btn');
+        okBtn.textContent = okLabel;
+        okBtn.className = okVariant === 'primary'
+          ? 'h-9 px-4 text-xs font-semibold text-white bg-ocean-600 hover:bg-ocean-700 rounded-xl'
+          : 'h-9 px-4 text-xs font-semibold text-white bg-red-600 hover:bg-red-700 rounded-xl';
+        state.pendingConfirmFn = onConfirm;
+        document.getElementById('modal-confirm').classList.remove('hidden');
+      }
+
+      function closeConfirmDialog() {
+        state.pendingConfirmFn = null;
+        document.getElementById('modal-confirm').classList.add('hidden');
+      }
+
+      // =====================================================
+      // 6. DATA NORMALIZATION & SYNC QUEUE (Optimistic UI)
+      // =====================================================
+      function parseLeaveDates(raw) {
+        if (!raw) return [];
+        const items = Array.isArray(raw) ? raw : String(raw).split(/[,;\s]+/);
+        const set = new Set();
+        items.forEach((item) => {
+          const normalized = normalizeDateString(item);
+          if (/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+            set.add(normalized);
+          }
+        });
+        return Array.from(set).sort();
+      }
+
+      function isPersonOnLeave(personId, dateStr) {
+        const p = state.personnel.find((x) => x.id === personId);
+        if (!p || !Array.isArray(p.leave_dates)) return false;
+        return p.leave_dates.includes(dateStr);
+      }
+
+      function getYearlyAttendanceCount(personId, year = state.calendarYear) {
+        const prefix = `${year}-`;
+        const uniqueDates = new Set();
+        state.schedules.forEach((s) => {
+          if (s.personnel_id === personId && s.date && s.date.startsWith(prefix)) {
+            uniqueDates.add(s.date);
+          }
+        });
+        return uniqueDates.size;
+      }
+
+      function getValidScheduleSeq(s) {
+        if (!s || s.seq === null || s.seq === undefined || String(s.seq).trim() === '') return null;
+        const n = Number(s.seq);
+        return Number.isFinite(n) && n > 0 ? n : null;
+      }
+
+      function sortPersonDaySchedules(list) {
+        return list
+          .map((item, idx) => ({ item, idx, seq: getValidScheduleSeq(item) }))
+          .sort((a, b) => {
+            if (a.seq !== null && b.seq !== null) {
+              if (a.seq !== b.seq) return a.seq - b.seq;
+              return a.idx - b.idx;
+            }
+            // Legacy/unnumbered records belong before newly appended numbered stops
+            if (a.seq === null && b.seq !== null) return -1;
+            if (a.seq !== null && b.seq === null) return 1;
+            return a.idx - b.idx;
+          })
+          .map((entry) => entry.item);
+      }
+
+      function getOrderedPersonnelList() {
+        const groups = new Map();
+        PERSONNEL_UNITS.forEach((u) => groups.set(u, []));
+        state.personnel.forEach((p) => {
+          if (!groups.has(p.unit)) groups.set(p.unit, []);
+          groups.get(p.unit).push(p);
+        });
+        const sortedGroups = sortUnitsByOrder(Array.from(groups.entries()), PERSONNEL_UNITS);
+        const ordered = [];
+        sortedGroups.forEach(([, members]) => {
+          members.forEach((m) => ordered.push(m));
+        });
+        return ordered;
+      }
+
+      function getPersonnelOrderRankMap() {
+        const rankMap = new Map();
+        getOrderedPersonnelList().forEach((p, idx) => {
+          rankMap.set(p.id, idx);
+        });
+        return rankMap;
+      }
+
+      function sortUnitsByOrder(unitEntries, fixedOrder) {
+        return unitEntries.sort(([a], [b]) => {
+          const ia = fixedOrder.indexOf(a);
+          const ib = fixedOrder.indexOf(b);
+          if (ia !== -1 && ib !== -1) return ia - ib;
+          if (ia !== -1) return -1;
+          if (ib !== -1) return 1;
+          return a.localeCompare(b, 'zh-Hant');
+        });
+      }
+
+      function normalizeAndStoreData(raw) {
+        const source = raw.data && typeof raw.data === 'object' ? raw.data : raw;
+        const rawPersonnel = Array.isArray(source.personnel) ? source.personnel : (Array.isArray(source.Personnel) ? source.Personnel : []);
+        const rawLocations = Array.isArray(source.locations) ? source.locations : (Array.isArray(source.Locations) ? source.Locations : []);
+        const rawSchedules = Array.isArray(source.schedules) ? source.schedules : (Array.isArray(source.Schedules) ? source.Schedules : []);
+
+        state.personnel = rawPersonnel.map((p) => ({
+          id: String(p.id || ''),
+          unit: String(p.unit || '未分類單位').trim() || '未分類單位',
+          name: String(p.name || '').trim(),
+          phone: String(p.phone || '').trim(),
+          plate: String(p.plate || '').trim(),
+          note: String(p.note || '').trim(),
+          leave_dates: parseLeaveDates(p.leave_dates),
+        }));
+
+        state.locations = rawLocations.map((loc) => {
+          const coords = twd97ToWgs84(loc.twd97_x, loc.twd97_y);
+          return {
+            id: String(loc.id || ''),
+            unit: String(loc.unit || '未分類轄區').trim() || '未分類轄區',
+            name: String(loc.name || '').trim(),
+            twd97_x: Number(loc.twd97_x),
+            twd97_y: Number(loc.twd97_y),
+            _lat: coords ? coords.lat : null,
+            _lng: coords ? coords.lng : null,
+          };
+        });
+
+        state.schedules = rawSchedules.map((s) => ({
+          id: String(s.id || ''),
+          date: normalizeDateString(s.date),
+          personnel_id: String(s.personnel_id || ''),
+          location_id: String(s.location_id || ''),
+          seq: s.seq !== undefined && s.seq !== null && String(s.seq).trim() !== '' && !isNaN(Number(s.seq))
+            ? Number(s.seq)
+            : null,
+          updated_at: String(s.updated_at || ''),
+        })).filter((s) => s.date && s.personnel_id && s.location_id);
+      }
+
+      function normalizeDateString(val) {
+        if (!val) return '';
+        const str = String(val).trim();
+        if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+        // Handle ISO timestamps from Google Sheets Date cells
+        const d = new Date(str);
+        if (!isNaN(d.getTime())) return formatDateLocal(d);
+        return str.slice(0, 10);
+      }
+
+      function updateSyncIndicator(status, customText) {
+        state.syncStatus = status;
+        const el = document.getElementById('sync-status-indicator');
+        if (state.role !== 'admin') {
+          el.classList.add('hidden');
+          el.classList.remove('flex');
+          return;
+        }
+        if (status === 'idle') {
+          el.classList.add('hidden');
+          el.classList.remove('flex');
+          return;
+        }
+        el.classList.remove('hidden');
+        el.classList.add('flex');
+        if (status === 'syncing') {
+          el.className = 'flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-md border bg-amber-50 border-amber-200 text-amber-800 whitespace-nowrap';
+          el.innerHTML = '<span class="w-3 h-3 border-2 border-amber-300 border-t-amber-700 rounded-full animate-spin"></span><span>雲端同步中...</span>';
+        } else if (status === 'saved') {
+          el.className = 'flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-md border bg-emerald-50 border-emerald-200 text-emerald-700 whitespace-nowrap';
+          el.textContent = customText || '已儲存 ✓';
+        } else if (status === 'error') {
+          el.className = 'flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-md border bg-red-50 border-red-200 text-red-700 whitespace-nowrap';
+          el.textContent = customText || '同步失敗';
+        }
+      }
+
+      function enqueueMutation(taskFn) {
+        state.mutationQueue.push(taskFn);
+        processMutationQueue();
+      }
+
+      async function processMutationQueue() {
+        if (state.isProcessingQueue) return;
+        if (state.mutationQueue.length === 0) return;
+
+        state.isProcessingQueue = true;
+        clearTimeout(state.syncTimer);
+        updateSyncIndicator('syncing');
+
+        let hadError = false;
+        while (state.mutationQueue.length > 0) {
+          const task = state.mutationQueue.shift();
+          try {
+            await task();
+          } catch (err) {
+            hadError = true;
+            console.error('GAS sync error:', err);
+            showToast(err.message || '雲端儲存失敗，請檢查網路或重新整理', 'error');
+          }
+        }
+
+        state.isProcessingQueue = false;
+
+        if (hadError) {
+          updateSyncIndicator('error', '同步失敗，請重整確認');
+        } else {
+          // Quietly refresh authoritative IDs from server so temp IDs reconcile cleanly
+          try {
+            const fresh = await callGasApi({ action: 'getAllData', token: state.token });
+            if (fresh && fresh.success !== false) {
+              normalizeAndStoreData(fresh);
+              renderAll();
+            }
+          } catch (refreshErr) {
+            console.warn('Background refresh warning:', refreshErr);
+          }
+          updateSyncIndicator('saved', '已儲存 ✓');
+          state.syncTimer = setTimeout(() => {
+            if (!state.isProcessingQueue) updateSyncIndicator('idle');
+          }, 3000);
+        }
+      }
+
+      // =====================================================
+      // 7. WEB GIS MAP ENGINE (Leaflet + 4 Basemaps)
+      // =====================================================
+      let mainMap = null;
+      let baseLayers = {};
+      let activeLayerKey = 'emap';
+      let markersLayerGroup = null;
+      let markerByLocationId = new Map();
+      let previewMap = null;
+      let previewMarker = null;
+
+      function createTileLayers() {
+        const nlscAttribution = '© 內政部國土測繪中心 (NLSC)';
+        return {
+          emap: L.tileLayer(
+            'https://wmts.nlsc.gov.tw/wmts/EMAP/default/GoogleMapsCompatible/{z}/{y}/{x}',
+            { maxZoom: 19, attribution: nlscAttribution }
+          ),
+          photo2: L.tileLayer(
+            'https://wmts.nlsc.gov.tw/wmts/PHOTO2/default/GoogleMapsCompatible/{z}/{y}/{x}',
+            { maxZoom: 19, attribution: nlscAttribution }
+          ),
+          mix: L.layerGroup([
+            L.tileLayer(
+              'https://wmts.nlsc.gov.tw/wmts/PHOTO2/default/GoogleMapsCompatible/{z}/{y}/{x}',
+              { maxZoom: 19, attribution: nlscAttribution }
+            ),
+            L.tileLayer(
+              'https://wmts.nlsc.gov.tw/wmts/EMAP2/default/GoogleMapsCompatible/{z}/{y}/{x}',
+              { maxZoom: 19, attribution: nlscAttribution }
+            ),
+          ]),
+          osm: L.tileLayer(
+            'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+            { maxZoom: 19, attribution: '© OpenStreetMap contributors' }
+          ),
+        };
+      }
+
+      function initMainMap() {
+        if (mainMap) return;
+        mainMap = L.map('gis-map', {
+          center: [23.85, 120.98],
+          zoom: 8,
+          zoomControl: false,
+        });
+        L.control.zoom({ position: 'bottomleft' }).addTo(mainMap);
+
+        baseLayers = createTileLayers();
+        baseLayers[activeLayerKey].addTo(mainMap);
+        markersLayerGroup = L.layerGroup().addTo(mainMap);
+        updateLayerSwitcherUI();
+      }
+
+      function switchMapLayer(layerKey) {
+        if (!mainMap || !baseLayers[layerKey] || activeLayerKey === layerKey) return;
+        mainMap.removeLayer(baseLayers[activeLayerKey]);
+        baseLayers[layerKey].addTo(mainMap);
+        activeLayerKey = layerKey;
+        updateLayerSwitcherUI();
+        document.getElementById('layer-switcher-menu').classList.add('hidden');
+      }
+
+      function updateLayerSwitcherUI() {
+        const labels = {
+          emap: '臺灣通用電子地圖',
+          photo2: '臺灣正射影像',
+          mix: '臺灣混和地圖',
+          osm: 'OpenStreetMap',
+        };
+        document.getElementById('current-layer-label').textContent = labels[activeLayerKey] || labels.emap;
+        document.querySelectorAll('.layer-option').forEach((btn) => {
+          const isActive = btn.dataset.layer === activeLayerKey;
+          btn.classList.toggle('bg-ocean-50', isActive);
+          btn.classList.toggle('text-ocean-700', isActive);
+          btn.classList.toggle('font-semibold', isActive);
+          const check = btn.querySelector('.layer-check');
+          if (check) check.classList.toggle('hidden', !isActive);
+        });
+      }
+
+      function createPinIcon(mode) {
+        // mode: 'default' | 'scheduled' | 'amber' | 'emerald' | 'dim'
+        let fill = '#0F4C81';
+        let size = 30;
+        let opacity = 1;
+        let haloHtml = '';
+
+        if (mode === 'scheduled') {
+          fill = '#F59E0B';
+          size = 34;
+        } else if (mode === 'amber') {
+          fill = '#F59E0B';
+          size = 38;
+          haloHtml = '<span class="gis-pin-halo"></span>';
+        } else if (mode === 'emerald') {
+          fill = '#10B981';
+          size = 40;
+          haloHtml = '<span class="gis-pin-halo emerald"></span>';
+        } else if (mode === 'dim') {
+          fill = '#64748B';
+          size = 24;
+          opacity = 0.36;
+        }
+
+        const html = `
+          <div class="gis-pin" style="width:${size}px;height:${size}px;opacity:${opacity};">
+            ${haloHtml}
+            <svg viewBox="0 0 24 24" width="${size}" height="${size}" style="filter: drop-shadow(0 3px 5px rgba(15,23,42,0.35)); position:relative; z-index:2;">
+              <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" fill="${fill}" stroke="#FFFFFF" stroke-width="2"/>
+              <circle cx="12" cy="9" r="2.8" fill="#FFFFFF"/>
+            </svg>
+          </div>
+        `;
+        return L.divIcon({
+          className: 'gis-pin-wrapper',
+          html,
+          iconSize: [size, size],
+          iconAnchor: [size / 2, size],
+          tooltipAnchor: [0, -size + 4],
+        });
+      }
+
+      function getYearlyScheduledLocationIds(year) {
+        const prefix = `${year}-`;
+        const ids = new Set();
+        state.schedules.forEach((s) => {
+          if (s.date && s.date.startsWith(prefix) && s.location_id) {
+            ids.add(s.location_id);
+          }
+        });
+        return ids;
+      }
+
+      function getFocusLocationIds() {
+        // Determine highlighted location IDs based on current 4-way linkage state
+        if (state.selectedLocationId) {
+          return { mode: 'location', ids: new Set([state.selectedLocationId]) };
+        }
+        if (state.selectedPersonId) {
+          const relevant = state.schedules.filter((s) => {
+            if (s.personnel_id !== state.selectedPersonId) return false;
+            if (state.dateFilterActive) return s.date === state.activeDate;
+            return true;
+          });
+          return { mode: 'person', ids: new Set(relevant.map((s) => s.location_id)) };
+        }
+        if (state.dateFilterActive) {
+          const relevant = state.schedules.filter((s) => s.date === state.activeDate);
+          return { mode: 'date', ids: new Set(relevant.map((s) => s.location_id)) };
+        }
+        return { mode: 'all', ids: new Set(state.locations.map((l) => l.id)) };
+      }
+
+      function renderMapMarkers(fitBoundsIfAll = false) {
+        if (!mainMap || !markersLayerGroup) return;
+        markersLayerGroup.clearLayers();
+        markerByLocationId.clear();
+
+        const focus = getFocusLocationIds();
+        const isFocusActive = focus.mode !== 'all';
+        const currentYear = new Date().getFullYear();
+        const yearlyScheduledIds = getYearlyScheduledLocationIds(currentYear);
+        const personnelRankMap = getPersonnelOrderRankMap();
+        const personById = new Map(state.personnel.map((p) => [p.id, p]));
+        const validBounds = [];
+
+        state.locations.forEach((loc) => {
+          if (loc._lat === null || loc._lng === null) return;
+          validBounds.push([loc._lat, loc._lng]);
+
+          let pinMode = 'default';
+          if (isFocusActive) {
+            if (focus.ids.has(loc.id)) {
+              pinMode = focus.mode === 'location' ? 'emerald' : 'amber';
+            } else {
+              pinMode = 'dim';
+            }
+          } else if (yearlyScheduledIds.has(loc.id)) {
+            pinMode = 'scheduled';
+          }
+
+          const marker = L.marker([loc._lat, loc._lng], {
+            icon: createPinIcon(pinMode),
+            zIndexOffset: pinMode === 'emerald' ? 1000 : pinMode === 'amber' ? 700 : pinMode === 'scheduled' ? 300 : 0,
+          });
+
+          const uniqueAttendeeIds = Array.from(
+            new Set(
+              state.schedules
+                .filter((s) => s.location_id === loc.id && s.date === state.activeDate)
+                .map((s) => s.personnel_id)
+            )
+          ).sort((pidA, pidB) => {
+            const rankA = personnelRankMap.has(pidA) ? personnelRankMap.get(pidA) : Number.MAX_SAFE_INTEGER;
+            const rankB = personnelRankMap.has(pidB) ? personnelRankMap.get(pidB) : Number.MAX_SAFE_INTEGER;
+            if (rankA !== rankB) return rankA - rankB;
+            return String(pidA).localeCompare(String(pidB));
+          });
+
+          const attendeeNames = uniqueAttendeeIds
+            .map((pid) => personById.get(pid)?.name)
+            .filter(Boolean);
+
+          const attendeesHtml = attendeeNames.length > 0
+            ? `<div class="mt-1.5 pt-1.5 border-t border-white/15 space-y-0.5 text-[11px] font-medium text-slate-100">${attendeeNames
+                .map((name) => `<div class="leading-snug break-words">${escapeHtml(name)}</div>`)
+                .join('')}</div>`
+            : `<div class="mt-1.5 pt-1.5 border-t border-white/15 text-[11px] font-normal text-slate-400">當日無出勤人員</div>`;
+
+          const tooltipHtml = `
+            <div class="text-left">
+              <div class="font-bold text-white leading-snug break-words">${escapeHtml(loc.name)}</div>
+              <div class="text-[11px] font-mono tabular-nums text-slate-300 mt-0.5">${escapeHtml(state.activeDate)}</div>
+              ${attendeesHtml}
+            </div>
+          `;
+
+          marker.bindTooltip(tooltipHtml, {
+            direction: 'top',
+            className: 'gis-tooltip',
+            permanent: state.selectedLocationId === loc.id,
+          });
+
+          marker.on('click', () => {
+            selectLocationFromMap(loc.id);
+          });
+
+          marker.addTo(markersLayerGroup);
+          markerByLocationId.set(loc.id, marker);
+        });
+
+        updateMapStatusBanner(focus, yearlyScheduledIds);
+
+        if (fitBoundsIfAll && validBounds.length > 0) {
+          mainMap.fitBounds(validBounds, { padding: [40, 40], maxZoom: 14 });
+        }
+      }
+
+      function updateMapStatusBanner(focus, yearlyScheduledIds) {
+        const titleEl = document.getElementById('map-status-title');
+        const subEl = document.getElementById('map-status-sub');
+        const validLocs = state.locations.filter((l) => l._lat !== null);
+        const validCount = validLocs.length;
+
+        if (focus.mode === 'location') {
+          const loc = state.locations.find((l) => l.id === state.selectedLocationId);
+          const count = state.schedules.filter(
+            (s) => s.location_id === state.selectedLocationId && s.date === state.activeDate
+          ).length;
+          titleEl.textContent = loc ? `已定位：${loc.name}` : '已選取地點';
+          subEl.textContent = `查詢日期 ${state.activeDate} · 出席人員 ${count} 人`;
+        } else if (focus.mode === 'person') {
+          const person = state.personnel.find((p) => p.id === state.selectedPersonId);
+          titleEl.textContent = person ? `人員排程：${person.name}` : '人員排程地點';
+          subEl.textContent = state.dateFilterActive
+            ? `篩選日期 ${state.activeDate} · 關聯地點 ${focus.ids.size} 處`
+            : `全部排程地點 · 共 ${focus.ids.size} 處`;
+        } else if (focus.mode === 'date') {
+          titleEl.textContent = `出工總覽：${state.activeDate}`;
+          subEl.textContent = `當日有排程地點 ${focus.ids.size} 處（其餘地點已淡化）`;
+        } else {
+          const currentYear = new Date().getFullYear();
+          const scheduledSet = yearlyScheduledIds || getYearlyScheduledLocationIds(currentYear);
+          const scheduledCount = validLocs.filter((l) => scheduledSet.has(l.id)).length;
+          const unscheduledCount = Math.max(0, validCount - scheduledCount);
+          titleEl.textContent = `全部工作地點（共 ${validCount} 處）`;
+          subEl.textContent = `${currentYear}年有排程 ${scheduledCount} 處(橘) · 未排程 ${unscheduledCount} 處(藍)`;
+        }
+      }
+
+      function fitAllMapPins() {
+        if (!mainMap) return;
+        const pts = state.locations
+          .filter((l) => l._lat !== null && l._lng !== null)
+          .map((l) => [l._lat, l._lng]);
+        if (pts.length > 0) {
+          mainMap.fitBounds(pts, { padding: [44, 44], maxZoom: 14 });
+        }
+      }
+
+      // =====================================================
+      // 8. FOUR-WAY INTERACTION TRIGGERS
+      // =====================================================
+      function selectPerson(personId) {
+        if (state.selectedPersonId === personId) {
+          state.selectedPersonId = null;
+        } else {
+          state.selectedPersonId = personId;
+          // Mutually exclusive: clear location selection
+          state.selectedLocationId = null;
+          state.expandedLocationCardId = null;
+        }
+        renderAll();
+      }
+
+      function selectLocation(locationId, fromMap = false) {
+        if (!fromMap && state.selectedLocationId === locationId) {
+          state.selectedLocationId = null;
+          state.expandedLocationCardId = null;
+          renderAll();
+          return;
+        }
+
+        state.selectedLocationId = locationId;
+        state.expandedLocationCardId = locationId;
+        // Mutually exclusive: clear person selection
+        state.selectedPersonId = null;
+
+        const loc = state.locations.find((l) => l.id === locationId);
+        if (loc) {
+          state.expandedLocationUnits.add(loc.unit);
+        }
+
+        // Auto-expand units for all personnel attending this location on activeDate
+        const attendingIds = new Set(
+          state.schedules
+            .filter((s) => s.location_id === locationId && s.date === state.activeDate)
+            .map((s) => s.personnel_id)
+        );
+        state.personnel.forEach((p) => {
+          if (attendingIds.has(p.id)) {
+            state.expandedPersonnelUnits.add(p.unit);
+          }
+        });
+
+        renderAll();
+
+        // FlyTo on map
+        if (loc && loc._lat !== null && loc._lng !== null && mainMap) {
+          mainMap.flyTo([loc._lat, loc._lng], Math.max(mainMap.getZoom(), 15), { duration: 0.55 });
+        }
+
+        // Scroll location & attendee cards vertically inside their own containers (prevents mobile horizontal scroll hijack)
+        requestAnimationFrame(() => {
+          const locContainer = document.getElementById('locations-list-container');
+          const locCard = document.querySelector(`[data-location-card="${CSS.escape(locationId)}"]`);
+          if (locCard && locContainer) {
+            const topOffset = locCard.offsetTop - locContainer.offsetTop - 12;
+            locContainer.scrollTo({ top: Math.max(0, topOffset), behavior: 'smooth' });
+          }
+          if (fromMap && attendingIds.size > 0) {
+            const personContainer = document.getElementById('personnel-list-container');
+            const firstPersonId = Array.from(attendingIds)[0];
+            const personCard = document.querySelector(`[data-person-card="${CSS.escape(firstPersonId)}"]`);
+            if (personCard && personContainer) {
+              const pTopOffset = personCard.offsetTop - personContainer.offsetTop - 12;
+              personContainer.scrollTo({ top: Math.max(0, pTopOffset), behavior: 'smooth' });
+            }
+          }
+        });
+      }
+
+      function selectLocationFromMap(locationId) {
+        selectLocation(locationId, true);
+      }
+
+      function selectDate(dateStr) {
+        state.activeDate = dateStr;
+        state.dateFilterActive = true;
+        const parsed = parseDateLocal(dateStr);
+        state.calendarYear = parsed.getFullYear();
+        state.calendarMonth = parsed.getMonth();
+
+        // 先收合其他單位，僅展開當日有派工的人員單位與工作地點負責轄區單位
+        state.expandedPersonnelUnits.clear();
+        state.expandedLocationUnits.clear();
+
+        const daySchedules = state.schedules.filter((s) => {
+          if (s.date !== dateStr) return false;
+          if (state.selectedLocationId) return s.location_id === state.selectedLocationId;
+          if (state.selectedPersonId) return s.personnel_id === state.selectedPersonId;
+          return true;
+        });
+
+        const personById = new Map(state.personnel.map((p) => [p.id, p]));
+        const locationById = new Map(state.locations.map((l) => [l.id, l]));
+
+        daySchedules.forEach((s) => {
+          const p = personById.get(s.personnel_id);
+          if (p && p.unit) state.expandedPersonnelUnits.add(p.unit);
+          const l = locationById.get(s.location_id);
+          if (l && l.unit) state.expandedLocationUnits.add(l.unit);
+        });
+
+        if (state.selectedLocationId) {
+          const selLoc = locationById.get(state.selectedLocationId);
+          if (selLoc && selLoc.unit) state.expandedLocationUnits.add(selLoc.unit);
+        }
+
+        renderAll();
+      }
+
+      function resetSelection() {
+        state.selectedPersonId = null;
+        state.selectedLocationId = null;
+        state.expandedLocationCardId = null;
+        state.expandedPersonnelUnits.clear();
+        state.expandedLocationUnits.clear();
+        state.locationSearch = '';
+        const searchInput = document.getElementById('location-search-input');
+        if (searchInput) searchInput.value = '';
+        state.activeDate = getTodayStr();
+        state.dateFilterActive = false;
+        const t = parseDateLocal(state.activeDate);
+        state.calendarYear = t.getFullYear();
+        state.calendarMonth = t.getMonth();
+        renderAll();
+        fitAllMapPins();
+      }
+
+      // =====================================================
+      // 9. RENDERING: HEADER, PERSONNEL, LOCATIONS, CALENDAR
+      // =====================================================
+      function renderAll() {
+        renderHeader();
+        renderPersonnelList();
+        renderLocationsList();
+        renderCalendar();
+        renderMapMarkers(false);
+        refreshLucide();
+      }
+
+      function renderHeader() {
+        document.getElementById('header-today-date').textContent = getTodayStr();
+        document.getElementById('header-active-date').textContent = state.activeDate;
+
+        const roleBadge = document.getElementById('role-indicator');
+        const isAdmin = state.role === 'admin';
+        roleBadge.textContent = isAdmin ? '管理者模式' : '檢視模式';
+        roleBadge.className = isAdmin
+          ? 'text-xs font-semibold px-2.5 py-1 rounded-md whitespace-nowrap shrink-0 bg-ocean-600 text-white'
+          : 'text-xs font-semibold px-2.5 py-1 rounded-md whitespace-nowrap shrink-0 bg-slate-100 text-slate-600 border border-slate-200';
+
+        document.querySelectorAll('.admin-only').forEach((el) => {
+          if (isAdmin) {
+            el.classList.remove('hidden');
+            if (el.tagName === 'BUTTON' || el.id === 'admin-drag-banner') {
+              el.classList.add('flex');
+            }
+          } else {
+            el.classList.add('hidden');
+            el.classList.remove('flex');
+          }
+        });
+
+        // Update Reset bar caption & button highlight
+        const captionEl = document.getElementById('active-filter-caption');
+        const resetBtn = document.getElementById('reset-selection-btn');
+        const hasFilter = Boolean(state.selectedPersonId || state.selectedLocationId || state.dateFilterActive);
+
+        if (state.selectedPersonId) {
+          const p = state.personnel.find((x) => x.id === state.selectedPersonId);
+          captionEl.textContent = `已選人員：${p ? p.name : ''}${state.dateFilterActive ? ' · ' + state.activeDate : ''}`;
+        } else if (state.selectedLocationId) {
+          const l = state.locations.find((x) => x.id === state.selectedLocationId);
+          captionEl.textContent = `已選地點：${l ? l.name : ''} · ${state.activeDate}`;
+        } else if (state.dateFilterActive) {
+          captionEl.textContent = `檢視日期：${state.activeDate}`;
+        } else {
+          captionEl.textContent = '預設總覽（全部地點）';
+        }
+
+        if (hasFilter) {
+          resetBtn.className = 'h-8 px-3 text-xs font-semibold rounded-lg border border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0';
+        } else {
+          resetBtn.className = 'h-8 px-3 text-xs font-semibold rounded-lg border border-slate-200 bg-white text-slate-500 hover:text-slate-700 hover:bg-slate-50 transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0';
+        }
+      }
+
+      function renderPersonnelList() {
+        const container = document.getElementById('personnel-list-container');
+        const countEl = document.getElementById('personnel-count');
+        const hintEl = document.getElementById('personnel-context-hint');
+        const isAdmin = state.role === 'admin';
+
+        countEl.textContent = `(${state.personnel.length})`;
+
+        // Determine which personnel IDs are highlighted by Location+Date or Date-only filter
+        const highlightedByContext = new Set();
+        let contextActive = false;
+
+        if (state.selectedLocationId) {
+          contextActive = true;
+          state.schedules.forEach((s) => {
+            if (s.location_id === state.selectedLocationId && s.date === state.activeDate) {
+              highlightedByContext.add(s.personnel_id);
+            }
+          });
+          hintEl.textContent = `${state.activeDate} 前往此地點：${highlightedByContext.size} 人`;
+          hintEl.classList.remove('hidden');
+        } else if (state.dateFilterActive && !state.selectedPersonId) {
+          contextActive = true;
+          state.schedules.forEach((s) => {
+            if (s.date === state.activeDate) {
+              highlightedByContext.add(s.personnel_id);
+            }
+          });
+          hintEl.textContent = `${state.activeDate} 出勤人數：${highlightedByContext.size} 人`;
+          hintEl.classList.remove('hidden');
+        } else {
+          hintEl.classList.add('hidden');
+        }
+
+        // Pre-seed all 5 fixed agency units so all 5 drawers render collapsed by default
+        const groups = new Map();
+        PERSONNEL_UNITS.forEach((u) => groups.set(u, []));
+        state.personnel.forEach((p) => {
+          if (!groups.has(p.unit)) groups.set(p.unit, []);
+          groups.get(p.unit).push(p);
+        });
+        const sortedGroups = sortUnitsByOrder(Array.from(groups.entries()), PERSONNEL_UNITS);
+
+        let html = '';
+        sortedGroups.forEach(([unit, members]) => {
+          const isExpanded = state.expandedPersonnelUnits.has(unit);
+          const color = getUnitColor(unit);
+          const matchCountInUnit = contextActive
+            ? members.filter((m) => highlightedByContext.has(m.id)).length
+            : 0;
+
+          html += `
+            <div class="border border-slate-200 rounded-xl bg-white overflow-hidden">
+              <button
+                type="button"
+                data-toggle-person-unit="${escapeHtml(unit)}"
+                class="w-full px-3 py-2 flex items-center justify-between gap-2 text-left hover:bg-slate-50 transition-colors"
+              >
+                <div class="flex items-center gap-2 min-w-0">
+                  <span class="w-2.5 h-2.5 rounded-full shrink-0" style="background-color:${color.dot};"></span>
+                  <span class="text-xs font-bold text-slate-800 truncate">${escapeHtml(unit)}</span>
+                  <span class="text-[11px] font-mono tabular-nums text-slate-400">${members.length}</span>
+                  ${matchCountInUnit > 0 ? `<span class="text-[11px] font-semibold text-amber-700 font-mono tabular-nums">· ${matchCountInUnit} 出席</span>` : ''}
+                </div>
+                <i data-lucide="${isExpanded ? 'chevron-up' : 'chevron-down'}" class="w-4 h-4 text-slate-400 shrink-0"></i>
+              </button>
+          `;
+
+          if (isExpanded) {
+            html += `<div class="p-1.5 grid grid-cols-2 gap-1.5 border-t border-slate-100 bg-slate-50/40">`;
+            if (members.length === 0) {
+              html += `<div class="col-span-2 py-2.5 text-center text-[11px] text-slate-400">此單位尚無人員</div>`;
+            } else {
+              members.forEach((p) => {
+                const isSelected = state.selectedPersonId === p.id;
+                const isContextMatch = highlightedByContext.has(p.id);
+                const isDimmed = (state.selectedPersonId && !isSelected) || (contextActive && !isContextMatch);
+                const yearCount = isAdmin ? getYearlyAttendanceCount(p.id, state.calendarYear) : 0;
+
+                let cardStyle = 'bg-white border-slate-200 hover:border-slate-300';
+                if (isSelected) {
+                  cardStyle = 'bg-amber-50/90 border-amber-400 ring-2 ring-amber-400/30';
+                } else if (isContextMatch) {
+                  cardStyle = 'bg-emerald-50/90 border-emerald-400 ring-2 ring-emerald-400/25';
+                }
+
+                const tooltipTitle = isAdmin ? `${p.name} (${yearCount})` : p.name;
+
+                html += `
+                  <div
+                    data-person-card="${escapeHtml(p.id)}"
+                    ${isAdmin ? 'draggable="true"' : ''}
+                    title="${escapeHtml(tooltipTitle)}"
+                    class="person-card group rounded-lg border px-2 py-1.5 transition-all cursor-pointer select-none flex items-center justify-between gap-1 min-w-0 ${cardStyle} ${isDimmed ? 'opacity-40' : ''}"
+                  >
+                    <div class="min-w-0 flex-1 flex items-center gap-1">
+                      ${isAdmin ? `<i data-lucide="grip-vertical" class="w-3 h-3 text-slate-300 group-hover:text-slate-500 shrink-0 cursor-grab"></i>` : ''}
+                      <span class="text-xs font-bold text-slate-900 truncate">${escapeHtml(p.name)}</span>
+                      ${isAdmin ? `<span class="text-[11px] font-mono tabular-nums font-semibold text-ocean-700 shrink-0">(${yearCount})</span>` : ''}
+                    </div>
+                    ${isAdmin ? `
+                      <div class="flex items-center shrink-0" data-stop-prop="true">
+                        <button type="button" data-edit-person="${escapeHtml(p.id)}" title="修改" class="w-5 h-5 rounded text-slate-400 hover:text-ocean-600 hover:bg-ocean-50 flex items-center justify-center">
+                          <i data-lucide="pencil" class="w-3 h-3"></i>
+                        </button>
+                        <button type="button" data-delete-person="${escapeHtml(p.id)}" title="刪除" class="w-5 h-5 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 flex items-center justify-center">
+                          <i data-lucide="trash-2" class="w-3 h-3"></i>
+                        </button>
+                      </div>
+                    ` : ''}
+                  </div>
+                `;
+              });
+            }
+            html += `</div>`;
+          }
+          html += `</div>`;
+        });
+
+        container.innerHTML = html;
+      }
+
+      function renderLocationsList() {
+        const container = document.getElementById('locations-list-container');
+        const countEl = document.getElementById('location-count');
+        const isAdmin = state.role === 'admin';
+        const q = state.locationSearch.trim().toLowerCase();
+
+        const filtered = q
+          ? state.locations.filter(
+              (l) => l.name.toLowerCase().includes(q) || l.unit.toLowerCase().includes(q)
+            )
+          : state.locations;
+
+        countEl.textContent = `(${filtered.length})`;
+
+        const focus = getFocusLocationIds();
+        const isFocusActive = focus.mode !== 'all';
+
+        if (q && filtered.length === 0) {
+          container.innerHTML = `
+            <div class="py-8 px-4 text-center text-xs text-slate-400">
+              查無符合關鍵字的工作地點。
+            </div>
+          `;
+          return;
+        }
+
+        // Group by unit; when not searching, pre-seed all 4 fixed units so all 4 drawers render collapsed by default
+        const groups = new Map();
+        if (!q) {
+          LOCATION_UNITS.forEach((u) => groups.set(u, []));
+        }
+        filtered.forEach((loc) => {
+          if (!groups.has(loc.unit)) groups.set(loc.unit, []);
+          groups.get(loc.unit).push(loc);
+        });
+        const sortedGroups = sortUnitsByOrder(Array.from(groups.entries()), LOCATION_UNITS);
+
+        let html = '';
+        sortedGroups.forEach(([unit, locs]) => {
+          const isExpanded = q ? true : state.expandedLocationUnits.has(unit);
+          const color = getUnitColor(unit);
+
+          html += `
+            <div class="border border-slate-200 rounded-xl bg-white overflow-hidden">
+              <button
+                type="button"
+                data-toggle-location-unit="${escapeHtml(unit)}"
+                class="w-full px-3 py-2 flex items-center justify-between gap-2 text-left hover:bg-slate-50 transition-colors"
+              >
+                <div class="flex items-center gap-2 min-w-0">
+                  <span class="w-2.5 h-2.5 rounded-full shrink-0" style="background-color:${color.dot};"></span>
+                  <span class="text-xs font-bold text-slate-800 truncate">${escapeHtml(unit)}</span>
+                  <span class="text-[11px] font-mono tabular-nums text-slate-400">${locs.length}</span>
+                </div>
+                <i data-lucide="${isExpanded ? 'chevron-up' : 'chevron-down'}" class="w-4 h-4 text-slate-400 shrink-0"></i>
+              </button>
+          `;
+
+          if (isExpanded) {
+            html += `<div class="p-1.5 grid grid-cols-2 gap-1.5 border-t border-slate-100 bg-slate-50/40">`;
+            if (locs.length === 0) {
+              html += `<div class="col-span-2 py-2.5 text-center text-[11px] text-slate-400">此單位尚無工作地點</div>`;
+            } else {
+              locs.forEach((loc) => {
+                const isSelected = state.selectedLocationId === loc.id;
+                const isFocused = isFocusActive && focus.ids.has(loc.id);
+                const isDimmed = isFocusActive && !focus.ids.has(loc.id);
+                const showNav = state.expandedLocationCardId === loc.id;
+                const hasValidCoord = loc._lat !== null && loc._lng !== null;
+
+                let cardStyle = 'bg-white border-slate-200 hover:border-slate-300';
+                if (isSelected) {
+                  cardStyle = 'bg-emerald-50/90 border-emerald-500 ring-2 ring-emerald-500/25';
+                } else if (isFocused) {
+                  cardStyle = 'bg-amber-50/90 border-amber-400 ring-2 ring-amber-400/25';
+                }
+
+                const navHref = hasValidCoord
+                  ? `https://www.google.com/maps/dir/?api=1&destination=${loc._lat.toFixed(6)},${loc._lng.toFixed(6)}&travelmode=driving`
+                  : '#';
+
+                html += `
+                  <div
+                    data-location-card="${escapeHtml(loc.id)}"
+                    title="${escapeHtml(loc.name)}"
+                    class="location-card rounded-lg border px-2 py-1.5 transition-all cursor-pointer min-w-0 ${showNav && hasValidCoord ? 'col-span-2' : ''} ${cardStyle} ${isDimmed ? 'opacity-40' : ''}"
+                  >
+                    <div class="flex items-center justify-between gap-1 min-w-0">
+                      <div class="min-w-0 flex-1 flex items-center gap-1">
+                        <span class="text-xs font-bold text-slate-900 truncate">${escapeHtml(loc.name)}</span>
+                        ${!hasValidCoord ? '<span class="text-[10px] text-red-600 shrink-0" title="座標異常">(!)</span>' : ''}
+                      </div>
+                      ${isAdmin ? `
+                        <div class="flex items-center shrink-0" data-stop-prop="true">
+                          <button type="button" data-edit-location="${escapeHtml(loc.id)}" title="修改" class="w-5 h-5 rounded text-slate-400 hover:text-ocean-600 hover:bg-ocean-50 flex items-center justify-center">
+                            <i data-lucide="pencil" class="w-3 h-3"></i>
+                          </button>
+                          <button type="button" data-delete-location="${escapeHtml(loc.id)}" title="刪除" class="w-5 h-5 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 flex items-center justify-center">
+                            <i data-lucide="trash-2" class="w-3 h-3"></i>
+                          </button>
+                        </div>
+                      ` : ''}
+                    </div>
+                    ${showNav && hasValidCoord ? `
+                      <div class="mt-2 pt-1.5 border-t border-emerald-200/70" data-stop-prop="true">
+                        <a
+                          href="${navHref}"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          class="w-full h-8 px-3 bg-ocean-600 hover:bg-ocean-700 text-white text-xs font-semibold rounded-lg transition-colors flex items-center justify-center gap-1.5"
+                        >
+                          <i data-lucide="navigation" class="w-3.5 h-3.5"></i>
+                          <span>Google Maps 導航</span>
+                        </a>
+                      </div>
+                    ` : ''}
+                  </div>
+                `;
+              });
+            }
+            html += `</div>`;
+          }
+          html += `</div>`;
+        });
+
+        container.innerHTML = html;
+      }
+
+      function renderCalendar() {
+        const titleEl = document.getElementById('calendar-heading-title');
+        const bodyEl = document.getElementById('calendar-body-container');
+        const isAdmin = state.role === 'admin';
+
+        // Update segmented view toggle buttons
+        document.querySelectorAll('.cal-view-btn').forEach((btn) => {
+          const active = btn.dataset.calView === state.calendarView;
+          btn.className = active
+            ? 'cal-view-btn px-3 py-1 text-xs font-semibold rounded-md transition-colors whitespace-nowrap bg-white text-slate-900 shadow-sm'
+            : 'cal-view-btn px-3 py-1 text-xs font-semibold rounded-md transition-colors whitespace-nowrap text-slate-600 hover:text-slate-900';
+        });
+
+        const dragBanner = document.getElementById('admin-drag-banner');
+        if (isAdmin && state.calendarView === 'month') {
+          dragBanner.classList.remove('hidden');
+          dragBanner.classList.add('flex');
+        } else {
+          dragBanner.classList.add('hidden');
+          dragBanner.classList.remove('flex');
+        }
+
+        if (state.calendarView === 'month') {
+          titleEl.textContent = `${state.calendarYear} 年 ${String(state.calendarMonth + 1).padStart(2, '0')} 月`;
+          titleEl.className = 'text-sm lg:text-base font-bold text-slate-900 font-mono tabular-nums whitespace-nowrap';
+          renderMonthCalendar(bodyEl);
+        } else {
+          const dow = parseDateLocal(state.activeDate).getDay();
+          const isWeekend = dow === 0 || dow === 6;
+          titleEl.innerHTML = `${escapeHtml(state.activeDate)} <span class="${isWeekend ? 'text-red-600' : 'text-slate-700'}">(${getWeekdayLabel(state.activeDate)})</span>`;
+          renderDayCalendar(bodyEl);
+        }
+      }
+
+      function renderMonthCalendar(container) {
+        const isAdmin = state.role === 'admin';
+        const today = getTodayStr();
+        const firstDay = new Date(state.calendarYear, state.calendarMonth, 1);
+        const startOffset = firstDay.getDay(); // 0=Sun..6=Sat
+        const gridStart = new Date(state.calendarYear, state.calendarMonth, 1 - startOffset);
+
+        const locationById = new Map(state.locations.map((l) => [l.id, l]));
+        const personById = new Map(state.personnel.map((p) => [p.id, p]));
+
+        // Group schedules & leaves by date
+        const schedByDate = new Map();
+        state.schedules.forEach((s) => {
+          if (!schedByDate.has(s.date)) schedByDate.set(s.date, []);
+          schedByDate.get(s.date).push(s);
+        });
+
+        const leavesByDate = new Map();
+        state.personnel.forEach((p) => {
+          (p.leave_dates || []).forEach((dStr) => {
+            if (!leavesByDate.has(dStr)) leavesByDate.set(dStr, []);
+            leavesByDate.get(dStr).push(p);
+          });
+        });
+
+        const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
+        let html = `
+          <div class="bg-white border border-slate-200 rounded-xl overflow-hidden flex flex-col min-h-full">
+            <div class="grid grid-cols-7 border-b border-slate-200 bg-slate-50">
+              ${weekdays.map((w, idx) => `
+                <div class="py-2 text-center text-xs font-bold ${idx === 0 || idx === 6 ? 'text-red-600 bg-red-50/70' : 'text-slate-700'}">
+                  ${w}
+                </div>
+              `).join('')}
+            </div>
+            <div class="grid grid-cols-7 flex-1 auto-rows-fr divide-x divide-y divide-slate-200">
+        `;
+
+        for (let i = 0; i < 42; i++) {
+          const cellDateObj = new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + i);
+          const dateStr = formatDateLocal(cellDateObj);
+          const dow = cellDateObj.getDay();
+          const isWeekend = dow === 0 || dow === 6;
+          const inCurrentMonth = cellDateObj.getMonth() === state.calendarMonth;
+          const isToday = dateStr === today;
+          const isActiveDate = dateStr === state.activeDate;
+          const daySchedules = schedByDate.get(dateStr) || [];
+          const dayLeaves = leavesByDate.get(dateStr) || [];
+
+          // Determine linkage highlighting for this date cell
+          let personDayScheds = [];
+          let personOnLeaveThisDay = false;
+          let locationDayCount = 0;
+          let cellHighlightClass = '';
+
+          if (state.selectedPersonId) {
+            personOnLeaveThisDay = dayLeaves.some((p) => p.id === state.selectedPersonId);
+            personDayScheds = sortPersonDaySchedules(
+              daySchedules.filter((s) => s.personnel_id === state.selectedPersonId)
+            );
+            if (personDayScheds.length > 0) {
+              cellHighlightClass = 'bg-amber-50/90';
+            } else if (personOnLeaveThisDay) {
+              cellHighlightClass = 'bg-red-50/80';
+            }
+          } else if (state.selectedLocationId) {
+            const matches = daySchedules.filter((s) => s.location_id === state.selectedLocationId);
+            locationDayCount = matches.length;
+            if (locationDayCount > 0) {
+              cellHighlightClass = 'bg-emerald-50/80';
+            }
+          }
+
+          if (isActiveDate && state.dateFilterActive) {
+            cellHighlightClass += ' ring-2 ring-inset ring-ocean-600';
+          }
+
+          // Summarize schedules & leaves as clean person-name boxes (no spaces before 等N人, red border box for leave without prefix)
+          let contentHtml = '';
+          if (state.selectedPersonId) {
+            const selPerson = personById.get(state.selectedPersonId);
+            const selName = selPerson ? selPerson.name : '人員';
+            if (personOnLeaveThisDay) {
+              contentHtml += `
+                <div
+                  data-cal-tooltip="${escapeHtml(`休假人員：${selName}`)}"
+                  class="mt-1 px-1.5 py-0.5 rounded border border-red-700 bg-red-600 text-white text-[10px] font-semibold truncate"
+                >
+                  ${escapeHtml(selName)}
+                </div>
+              `;
+            }
+            if (personDayScheds.length > 0) {
+              const locNames = personDayScheds
+                .map((s) => locationById.get(s.location_id)?.name)
+                .filter(Boolean);
+              const tip = locNames.length > 1
+                ? `${selName}（${locNames.map((n, idx) => `${idx + 1}.${n}`).join('、')}）`
+                : (locNames.length === 1 ? `${selName}（${locNames[0]}）` : selName);
+              contentHtml += `
+                <div
+                  data-cal-tooltip="${escapeHtml(tip)}"
+                  class="mt-1 px-1.5 py-0.5 rounded border border-amber-600 bg-amber-500 text-white text-[10px] font-semibold truncate"
+                >
+                  ${escapeHtml(selName)}
+                </div>
+              `;
+            }
+          } else if (state.selectedLocationId) {
+            if (locationDayCount > 0) {
+              const seenIds = new Set();
+              const names = [];
+              daySchedules
+                .filter((s) => s.location_id === state.selectedLocationId)
+                .forEach((s) => {
+                  if (seenIds.has(s.personnel_id)) return;
+                  const p = personById.get(s.personnel_id);
+                  if (p) {
+                    seenIds.add(s.personnel_id);
+                    names.push(p.name);
+                  }
+                });
+              if (names.length > 0) {
+                const label = names.length === 1 ? names[0] : `${names[0]}等${names.length}人`;
+                const tip = `出席人員（${names.length}人）：${names.join('、')}`;
+                contentHtml = `
+                  <div
+                    data-cal-tooltip="${escapeHtml(tip)}"
+                    class="mt-1 px-1.5 py-0.5 rounded border border-emerald-700 bg-emerald-600 text-white text-[10px] font-semibold truncate"
+                  >
+                    ${escapeHtml(label)}
+                  </div>
+                `;
+              }
+            }
+          } else {
+            if (daySchedules.length > 0) {
+              const byPerson = new Map();
+              daySchedules.forEach((s) => {
+                if (!byPerson.has(s.personnel_id)) byPerson.set(s.personnel_id, []);
+                byPerson.get(s.personnel_id).push(s);
+              });
+              const attendeeEntries = [];
+              byPerson.forEach((scheds, pid) => {
+                const p = personById.get(pid);
+                if (!p) return;
+                const sorted = sortPersonDaySchedules(scheds);
+                const locNames = sorted
+                  .map((s) => locationById.get(s.location_id)?.name)
+                  .filter(Boolean);
+                attendeeEntries.push({ name: p.name, locNames });
+              });
+              if (attendeeEntries.length > 0) {
+                const label = attendeeEntries.length === 1
+                  ? attendeeEntries[0].name
+                  : `${attendeeEntries[0].name}等${attendeeEntries.length}人`;
+                const tip = `出勤人員（${attendeeEntries.length}人）：${attendeeEntries.map((a) => {
+                  if (a.locNames.length === 0) return a.name;
+                  if (a.locNames.length === 1) return `${a.name}(${a.locNames[0]})`;
+                  return `${a.name}(${a.locNames.map((n, idx) => `${idx + 1}.${n}`).join('、')})`;
+                }).join('、')}`;
+                contentHtml += `
+                  <div
+                    data-cal-tooltip="${escapeHtml(tip)}"
+                    class="mt-1 px-1.5 py-0.5 rounded border border-ocean-200 bg-ocean-50 text-ocean-800 text-[10px] font-semibold truncate"
+                  >
+                    ${escapeHtml(label)}
+                  </div>
+                `;
+              }
+            }
+
+            if (dayLeaves.length > 0) {
+              const leaveNames = dayLeaves.map((p) => p.name);
+              const label = leaveNames.length === 1
+                ? leaveNames[0]
+                : `${leaveNames[0]}等${leaveNames.length}人`;
+              const tip = `休假人員（${leaveNames.length}人）：${leaveNames.join('、')}`;
+              contentHtml += `
+                <div
+                  data-cal-tooltip="${escapeHtml(tip)}"
+                  class="mt-1 px-1.5 py-0.5 rounded border border-red-400 bg-red-50 text-red-700 text-[10px] font-semibold truncate"
+                >
+                  ${escapeHtml(label)}
+                </div>
+              `;
+            }
+          }
+
+          let cellBgClass = inCurrentMonth
+            ? (isWeekend ? 'bg-red-50/40 hover:bg-red-50/70' : 'bg-white hover:bg-slate-50/90')
+            : (isWeekend ? 'bg-red-50/20 text-red-300' : 'bg-slate-50/70 text-slate-400');
+
+          let dateNumClass = '';
+          if (isToday) {
+            dateNumClass = isWeekend ? 'bg-red-600 text-white' : 'bg-ocean-600 text-white';
+          } else if (isActiveDate) {
+            dateNumClass = isWeekend ? 'bg-red-700 text-white' : 'bg-slate-900 text-white';
+          } else if (isWeekend) {
+            dateNumClass = inCurrentMonth ? 'text-red-600' : 'text-red-300';
+          } else {
+            dateNumClass = inCurrentMonth ? 'text-slate-700' : 'text-slate-400';
+          }
+
+          html += `
+            <div
+              data-cal-date="${dateStr}"
+              class="cal-date-cell min-h-[82px] lg:min-h-[96px] p-1.5 flex flex-col justify-between transition-colors cursor-pointer ${cellBgClass} ${cellHighlightClass}"
+            >
+              <div class="flex items-center justify-between gap-1">
+                <span class="inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-mono tabular-nums font-semibold ${dateNumClass}">
+                  ${cellDateObj.getDate()}
+                </span>
+                ${isAdmin ? `
+                  <button
+                    type="button"
+                    data-open-day-dispatch="${dateStr}"
+                    data-stop-prop="true"
+                    title="管理當日派工"
+                    class="w-6 h-6 rounded-md text-slate-400 hover:text-ocean-600 hover:bg-ocean-50 flex items-center justify-center transition-colors"
+                  >
+                    <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+                  </button>
+                ` : ''}
+              </div>
+              <div class="flex-1 min-w-0">${contentHtml}</div>
+            </div>
+          `;
+        }
+
+        html += `</div></div>`;
+        container.innerHTML = html;
+      }
+
+      function renderDayCalendar(container) {
+        const isAdmin = state.role === 'admin';
+        const dateStr = state.activeDate;
+        const dow = parseDateLocal(dateStr).getDay();
+        const isWeekend = dow === 0 || dow === 6;
+        const daySchedules = state.schedules.filter((s) => s.date === dateStr);
+        const dayLeaves = state.personnel.filter((p) => isPersonOnLeave(p.id, dateStr));
+        const locationById = new Map(state.locations.map((l) => [l.id, l]));
+        const personById = new Map(state.personnel.map((p) => [p.id, p]));
+
+        // Group by location & map each person's ordered stops for the day
+        const grouped = new Map();
+        const personDayStops = new Map();
+        daySchedules.forEach((s) => {
+          if (!grouped.has(s.location_id)) grouped.set(s.location_id, []);
+          grouped.get(s.location_id).push(s);
+          if (!personDayStops.has(s.personnel_id)) personDayStops.set(s.personnel_id, []);
+          personDayStops.get(s.personnel_id).push(s);
+        });
+        personDayStops.forEach((list, pid) => {
+          personDayStops.set(pid, sortPersonDaySchedules(list));
+        });
+
+        let html = `
+          <div class="space-y-3">
+            <div class="bg-white border border-slate-200 rounded-xl p-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div class="text-xs text-slate-500 font-medium">單日排程明細</div>
+                <div class="text-base font-bold text-slate-900 font-mono tabular-nums mt-0.5">
+                  ${dateStr} <span class="${isWeekend ? 'text-red-600' : ''}">${getWeekdayLabel(dateStr)}</span> · 共 ${personDayStops.size} 人出勤（${grouped.size} 處地點 · ${daySchedules.length} 筆派工）
+                </div>
+              </div>
+              ${isAdmin ? `
+                <button
+                  type="button"
+                  data-open-day-dispatch="${dateStr}"
+                  class="h-9 px-3.5 bg-ocean-600 hover:bg-ocean-700 text-white text-xs font-semibold rounded-xl flex items-center gap-1.5"
+                >
+                  <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+                  <span>派工管理</span>
+                </button>
+              ` : ''}
+            </div>
+        `;
+
+        if (dayLeaves.length > 0) {
+          html += `
+            <div class="bg-red-50/70 border border-red-200 rounded-xl px-4 py-3 flex flex-wrap items-center gap-2 text-xs">
+              <span class="font-bold text-red-700">當日請假休假人員 (${dayLeaves.length})：</span>
+              <span class="text-red-800">${dayLeaves.map((p) => `${escapeHtml(p.name)} (${escapeHtml(p.unit)})`).join('、')}</span>
+            </div>
+          `;
+        }
+
+        if (daySchedules.length === 0) {
+          html += `
+            <div class="bg-white border border-slate-200 rounded-xl p-10 text-center space-y-2">
+              <p class="text-sm font-medium text-slate-600">${dateStr} 尚未排定任何工作地點或人員</p>
+              <p class="text-xs text-slate-400">${isAdmin ? '可點擊右上方「派工管理」按鈕指派人員前往工作地點。' : '請選擇其他日期或點選左側工作地點查看排程。'}</p>
+            </div>
+          `;
+        } else {
+          grouped.forEach((schedList, locId) => {
+            const loc = locationById.get(locId);
+            const isLocSelected = state.selectedLocationId === locId;
+            const hasCoords = loc && loc._lat !== null && loc._lng !== null;
+            const navHref = hasCoords
+              ? `https://www.google.com/maps/dir/?api=1&destination=${loc._lat.toFixed(6)},${loc._lng.toFixed(6)}&travelmode=driving`
+              : '#';
+
+            html += `
+              <div class="bg-white border rounded-xl overflow-hidden ${isLocSelected ? 'border-emerald-500 ring-2 ring-emerald-500/20' : 'border-slate-200'}">
+                <div class="px-4 py-3 bg-slate-50/70 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2">
+                  <div class="min-w-0">
+                    <div class="flex items-center gap-2">
+                      <button type="button" data-focus-loc="${escapeHtml(locId)}" class="text-sm font-bold text-slate-900 hover:text-ocean-600 truncate text-left">
+                        ${loc ? escapeHtml(loc.name) : '未知地點'}
+                      </button>
+                      <span class="text-xs text-slate-500 font-mono tabular-nums">· ${schedList.length} 人</span>
+                    </div>
+                    ${loc ? `<div class="text-[11px] text-slate-500 mt-0.5">${escapeHtml(loc.unit)} · TWD97 (${Math.round(loc.twd97_x)}, ${Math.round(loc.twd97_y)})</div>` : ''}
+                  </div>
+                  ${hasCoords ? `
+                    <a href="${navHref}" target="_blank" rel="noopener noreferrer" class="h-8 px-3 bg-ocean-600 hover:bg-ocean-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 whitespace-nowrap">
+                      <i data-lucide="navigation" class="w-3.5 h-3.5"></i>
+                      <span>導航</span>
+                    </a>
+                  ` : ''}
+                </div>
+                <div class="divide-y divide-slate-100">
+                  ${schedList.map((s) => {
+                    const p = personById.get(s.personnel_id);
+                    if (!p) return '';
+                    const isPersonSelected = state.selectedPersonId === p.id;
+                    const yearCount = isAdmin ? getYearlyAttendanceCount(p.id, state.calendarYear) : 0;
+                    const stops = personDayStops.get(p.id) || [];
+                    const stopIdx = stops.findIndex((item) => item.id === s.id);
+                    const stopHint = stops.length > 1 && stopIdx !== -1 ? `第${stopIdx + 1}/${stops.length}站` : '';
+                    return `
+                      <div class="px-4 py-2.5 flex items-center justify-between gap-3 ${isPersonSelected ? 'bg-amber-50/80' : ''}">
+                        <div class="min-w-0">
+                          <div class="flex items-center gap-2 text-sm flex-wrap">
+                            <button type="button" data-focus-person="${escapeHtml(p.id)}" class="font-bold text-slate-900 hover:text-ocean-600">
+                              ${escapeHtml(p.name)}${isAdmin ? ` <span class="text-xs font-mono tabular-nums text-ocean-700">(${yearCount})</span>` : ''}
+                            </button>
+                            <span class="text-xs text-slate-500">${escapeHtml(p.unit)}</span>
+                            ${stopHint ? `<span class="text-xs font-mono tabular-nums font-semibold text-ocean-700">· ${stopHint}</span>` : ''}
+                            ${p.plate ? `<span class="text-xs font-mono tabular-nums text-slate-500">· ${escapeHtml(p.plate)}</span>` : ''}
+                          </div>
+                          <div class="text-xs text-slate-500 mt-0.5 flex flex-wrap items-center gap-2">
+                            ${p.phone ? `<a href="tel:${escapeHtml(p.phone)}" class="text-ocean-600 hover:underline font-mono tabular-nums">${escapeHtml(p.phone)}</a>` : ''}
+                            ${p.note ? `<span>· ${escapeHtml(p.note)}</span>` : ''}
+                          </div>
+                        </div>
+                        ${isAdmin ? `
+                          <button type="button" data-remove-schedule="${escapeHtml(s.id)}" title="移除此筆派工" class="w-8 h-8 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 flex items-center justify-center shrink-0">
+                            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                          </button>
+                        ` : ''}
+                      </div>
+                    `;
+                  }).join('')}
+                </div>
+              </div>
+            `;
+          });
+        }
+
+        html += `</div>`;
+        container.innerHTML = html;
+      }
+
+      // =====================================================
+      // 10. ADMIN CRUD & SCHEDULING HANDLERS
+      // =====================================================
+      function syncSelectOptions(selectEl, fixedOptions, currentVal) {
+        const opts = [...fixedOptions];
+        if (currentVal && !opts.includes(currentVal)) {
+          opts.push(currentVal);
+        }
+        selectEl.innerHTML = opts.map((u) => `<option value="${escapeHtml(u)}">${escapeHtml(u)}</option>`).join('');
+        selectEl.value = currentVal || fixedOptions[0];
+      }
+
+      function renderLeaveDateTags() {
+        const listEl = document.getElementById('person-leave-dates-list');
+        if (!state.editingLeaveDates || state.editingLeaveDates.length === 0) {
+          listEl.innerHTML = '<span class="text-[11px] text-slate-400">尚未設定請假日期</span>';
+          return;
+        }
+        listEl.innerHTML = state.editingLeaveDates.map((d) => `
+          <span class="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs font-mono tabular-nums font-medium">
+            <span>${escapeHtml(d)}</span>
+            <button type="button" data-remove-leave-date="${escapeHtml(d)}" aria-label="移除請假日 ${escapeHtml(d)}" class="w-4 h-4 rounded hover:bg-red-200/70 flex items-center justify-center text-red-600 font-sans font-bold">×</button>
+          </span>
+        `).join('');
+      }
+
+      function addLeaveDateFromInput() {
+        const input = document.getElementById('person-leave-date-input');
+        const val = normalizeDateString(input.value);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(val)) {
+          showToast('請先選擇有效的請假日期', 'warning');
+          return;
+        }
+        if (!state.editingLeaveDates.includes(val)) {
+          state.editingLeaveDates.push(val);
+          state.editingLeaveDates.sort();
+        }
+        input.value = '';
+        renderLeaveDateTags();
+      }
+
+      function openPersonnelModal(personId = null) {
+        if (state.role !== 'admin') return;
+        const person = personId ? state.personnel.find((p) => p.id === personId) : null;
+        document.getElementById('modal-personnel-title').textContent = person ? '編輯人員資料' : '新增人員';
+        document.getElementById('person-id').value = person ? person.id : '';
+        syncSelectOptions(document.getElementById('person-unit'), PERSONNEL_UNITS, person ? person.unit : PERSONNEL_UNITS[0]);
+        document.getElementById('person-name').value = person ? person.name : '';
+        document.getElementById('person-plate').value = person ? person.plate : '';
+        document.getElementById('person-phone').value = person ? person.phone : '';
+        document.getElementById('person-note').value = person ? person.note : '';
+        document.getElementById('person-leave-date-input').value = '';
+        state.editingLeaveDates = person && Array.isArray(person.leave_dates) ? [...person.leave_dates] : [];
+        renderLeaveDateTags();
+        document.getElementById('modal-personnel').classList.remove('hidden');
+      }
+
+      function savePersonnelFromModal(e) {
+        e.preventDefault();
+        if (state.role !== 'admin') return;
+
+        const id = document.getElementById('person-id').value.trim();
+        const leaveDatesArr = [...state.editingLeaveDates].sort();
+        const data = {
+          unit: document.getElementById('person-unit').value.trim(),
+          name: document.getElementById('person-name').value.trim(),
+          plate: document.getElementById('person-plate').value.trim(),
+          phone: document.getElementById('person-phone').value.trim(),
+          note: document.getElementById('person-note').value.trim(),
+          leave_dates: leaveDatesArr.join(','),
+        };
+        if (!data.unit || !data.name) return;
+
+        const isEdit = Boolean(id);
+        const tempId = isEdit ? id : `EMP_${Date.now()}`;
+        const optimisticRecord = {
+          id: tempId,
+          unit: data.unit,
+          name: data.name,
+          plate: data.plate,
+          phone: data.phone,
+          note: data.note,
+          leave_dates: leaveDatesArr,
+        };
+
+        if (isEdit) {
+          state.personnel = state.personnel.map((p) => (p.id === id ? optimisticRecord : p));
+        } else {
+          state.personnel.push(optimisticRecord);
+        }
+        state.expandedPersonnelUnits.add(data.unit);
+        document.getElementById('modal-personnel').classList.add('hidden');
+        renderAll();
+
+        enqueueMutation(() =>
+          callGasApi({
+            action: 'savePersonnel',
+            token: state.token,
+            data: isEdit ? { id, ...data } : data,
+          })
+        );
+      }
+
+      function requestDeletePersonnel(personId) {
+        if (state.role !== 'admin') return;
+        const p = state.personnel.find((x) => x.id === personId);
+        if (!p) return;
+        openConfirmDialog({
+          title: '刪除人員確認',
+          message: `確定要刪除人員「${p.name}」（${p.unit}）嗎？此人員相關的派工紀錄也將同步移除。`,
+          okLabel: '確認刪除',
+          onConfirm: () => {
+            state.personnel = state.personnel.filter((x) => x.id !== personId);
+            state.schedules = state.schedules.filter((s) => s.personnel_id !== personId);
+            if (state.selectedPersonId === personId) state.selectedPersonId = null;
+            renderAll();
+            enqueueMutation(() =>
+              callGasApi({ action: 'deletePersonnel', token: state.token, id: personId })
+            );
+          },
+        });
+      }
+
+      function openLocationModal(locationId = null) {
+        if (state.role !== 'admin') return;
+        const loc = locationId ? state.locations.find((l) => l.id === locationId) : null;
+        document.getElementById('modal-location-title').textContent = loc ? '編輯工作地點' : '新增工作地點';
+        document.getElementById('location-id').value = loc ? loc.id : '';
+        syncSelectOptions(document.getElementById('location-unit'), LOCATION_UNITS, loc ? loc.unit : LOCATION_UNITS[0]);
+        document.getElementById('location-name').value = loc ? loc.name : '';
+        document.getElementById('location-x').value = loc ? loc.twd97_x : '';
+        document.getElementById('location-y').value = loc ? loc.twd97_y : '';
+
+        document.getElementById('modal-location').classList.remove('hidden');
+
+        // Initialize or refresh preview map inside modal
+        setTimeout(() => {
+          if (!previewMap) {
+            previewMap = L.map('location-preview-map', {
+              center: [23.85, 120.98],
+              zoom: 7,
+              zoomControl: true,
+              attributionControl: false,
+            });
+            L.tileLayer(
+              'https://wmts.nlsc.gov.tw/wmts/EMAP/default/GoogleMapsCompatible/{z}/{y}/{x}',
+              { maxZoom: 19 }
+            ).addTo(previewMap);
+          } else {
+            previewMap.invalidateSize();
+          }
+          updateLocationPreviewCoords();
+        }, 60);
+      }
+
+      function updateLocationPreviewCoords() {
+        const xVal = document.getElementById('location-x').value;
+        const yVal = document.getElementById('location-y').value;
+        const statusEl = document.getElementById('location-coord-status');
+
+        if (!xVal || !yVal) {
+          statusEl.className = 'text-xs rounded-xl px-3 py-2 border bg-slate-50 border-slate-200 text-slate-600 font-mono tabular-nums';
+          statusEl.textContent = '輸入 TWD97 X / Y 座標後將即時顯示 WGS84 經緯度與地圖預覽。';
+          if (previewMarker && previewMap) {
+            previewMap.removeLayer(previewMarker);
+            previewMarker = null;
+          }
+          return false;
+        }
+
+        const strictOk = isTwd97InStrictBounds(xVal, yVal);
+        const coords = twd97ToWgs84(xVal, yVal);
+
+        if (!strictOk || !coords) {
+          statusEl.className = 'text-xs rounded-xl px-3 py-2 border bg-red-50 border-red-200 text-red-700 font-sans';
+          statusEl.textContent = '座標超出台灣本島合理範圍（X 應為 140,000–360,000，Y 應為 2,400,000–2,800,000），請檢查 X 與 Y 是否填反。';
+          if (previewMarker && previewMap) {
+            previewMap.removeLayer(previewMarker);
+            previewMarker = null;
+          }
+          return false;
+        }
+
+        statusEl.className = 'text-xs rounded-xl px-3 py-2 border bg-emerald-50 border-emerald-200 text-emerald-800 font-mono tabular-nums';
+        statusEl.textContent = `WGS84 預覽：${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}`;
+
+        if (previewMap) {
+          if (previewMarker) {
+            previewMarker.setLatLng([coords.lat, coords.lng]);
+          } else {
+            previewMarker = L.marker([coords.lat, coords.lng], { icon: createPinIcon('emerald') }).addTo(previewMap);
+          }
+          previewMap.setView([coords.lat, coords.lng], 15);
+        }
+        return true;
+      }
+
+      function saveLocationFromModal(e) {
+        e.preventDefault();
+        if (state.role !== 'admin') return;
+
+        const id = document.getElementById('location-id').value.trim();
+        const unit = document.getElementById('location-unit').value.trim();
+        const name = document.getElementById('location-name').value.trim();
+        const twd97_x = Number(document.getElementById('location-x').value);
+        const twd97_y = Number(document.getElementById('location-y').value);
+
+        if (!unit || !name) return;
+        if (!isTwd97InStrictBounds(twd97_x, twd97_y)) {
+          showToast('TWD97 座標數值不在台灣本島合理範圍內，請確認 X/Y 數值。', 'warning');
+          return;
+        }
+
+        const coords = twd97ToWgs84(twd97_x, twd97_y);
+        const isEdit = Boolean(id);
+        const tempId = isEdit ? id : `LOC_${Date.now()}`;
+        const optimisticRecord = {
+          id: tempId,
+          unit,
+          name,
+          twd97_x,
+          twd97_y,
+          _lat: coords ? coords.lat : null,
+          _lng: coords ? coords.lng : null,
+        };
+
+        if (isEdit) {
+          state.locations = state.locations.map((l) => (l.id === id ? optimisticRecord : l));
+        } else {
+          state.locations.push(optimisticRecord);
+        }
+        state.expandedLocationUnits.add(unit);
+        document.getElementById('modal-location').classList.add('hidden');
+        renderAll();
+
+        enqueueMutation(() =>
+          callGasApi({
+            action: 'saveLocation',
+            token: state.token,
+            data: isEdit ? { id, unit, name, twd97_x, twd97_y } : { unit, name, twd97_x, twd97_y },
+          })
+        );
+      }
+
+      function requestDeleteLocation(locationId) {
+        if (state.role !== 'admin') return;
+        const loc = state.locations.find((l) => l.id === locationId);
+        if (!loc) return;
+        openConfirmDialog({
+          title: '刪除工作地點確認',
+          message: `確定要刪除工作地點「${loc.name}」（${loc.unit}）嗎？此地點相關的派工紀錄也將同步移除。`,
+          okLabel: '確認刪除',
+          onConfirm: () => {
+            state.locations = state.locations.filter((l) => l.id !== locationId);
+            state.schedules = state.schedules.filter((s) => s.location_id !== locationId);
+            if (state.selectedLocationId === locationId) {
+              state.selectedLocationId = null;
+              state.expandedLocationCardId = null;
+            }
+            renderAll();
+            enqueueMutation(() =>
+              callGasApi({ action: 'deleteLocation', token: state.token, id: locationId })
+            );
+          },
+        });
+      }
+
+      // =====================================================
+      // 11. DRAG PERSON TO DATE -> ORDERED MULTI-LOCATION ASSIGN MODAL
+      // =====================================================
+      function openAssignLocationModal(personId, dateStr) {
+        if (state.role !== 'admin') return;
+        const person = state.personnel.find((p) => p.id === personId);
+        if (!person) return;
+
+        if (isPersonOnLeave(personId, dateStr)) {
+          showToast(`${person.name} 於 ${dateStr} 已設定請假，無法排入休假日工作！`, 'warning');
+          return;
+        }
+
+        const existingSchedules = sortPersonDaySchedules(
+          state.schedules.filter((s) => s.personnel_id === personId && s.date === dateStr)
+        );
+        const dedupedLocIds = [];
+        existingSchedules.forEach((s) => {
+          if (!dedupedLocIds.includes(s.location_id)) {
+            dedupedLocIds.push(s.location_id);
+          }
+        });
+
+        state.assignModalCtx = {
+          personId,
+          date: dateStr,
+          existingSchedules,
+          selectedLocationIds: dedupedLocIds,
+        };
+
+        document.getElementById('assign-modal-subtitle').textContent =
+          `${person.name} (${person.unit}) · 派工日期 ${dateStr}（依點擊勾選順序記錄次序）`;
+        document.getElementById('assign-loc-search').value = '';
+
+        const clearBtn = document.getElementById('assign-clear-btn');
+        if (existingSchedules.length > 0) {
+          clearBtn.classList.remove('hidden');
+        } else {
+          clearBtn.classList.add('hidden');
+        }
+
+        renderAssignLocationOptions();
+        document.getElementById('modal-assign-location').classList.remove('hidden');
+      }
+
+      function renderAssignOrderPreview() {
+        const ctx = state.assignModalCtx;
+        const previewEl = document.getElementById('assign-order-preview');
+        if (!ctx || !previewEl) return;
+
+        if (ctx.selectedLocationIds.length === 0) {
+          previewEl.className = 'text-xs bg-slate-50 border border-slate-200 text-slate-600 rounded-xl p-3';
+          previewEl.innerHTML = '請依序勾選當日要前往的工作地點（可多選，先勾選者排第 1 站）。';
+          return;
+        }
+
+        const locationById = new Map(state.locations.map((l) => [l.id, l]));
+        const routeText = ctx.selectedLocationIds
+          .map((id, idx) => `${idx + 1}. ${escapeHtml(locationById.get(id)?.name || '未知地點')}`)
+          .join(' → ');
+
+        previewEl.className = 'text-xs bg-ocean-50 border border-ocean-200 text-ocean-900 rounded-xl p-3 space-y-1.5';
+        previewEl.innerHTML = `
+          <div class="flex items-center justify-between gap-2">
+            <span class="font-bold">已依序選擇 ${ctx.selectedLocationIds.length} 處地點</span>
+            <button type="button" id="assign-reset-order-btn" class="text-[11px] font-semibold text-ocean-700 hover:underline whitespace-nowrap">
+              清空重選
+            </button>
+          </div>
+          <div class="leading-relaxed font-medium text-ocean-800">${routeText}</div>
+        `;
+      }
+
+      function renderAssignLocationOptions() {
+        const ctx = state.assignModalCtx;
+        if (!ctx) return;
+        renderAssignOrderPreview();
+
+        const q = document.getElementById('assign-loc-search').value.trim().toLowerCase();
+        const listEl = document.getElementById('assign-location-list');
+
+        const filtered = q
+          ? state.locations.filter(
+              (l) => l.name.toLowerCase().includes(q) || l.unit.toLowerCase().includes(q)
+            )
+          : state.locations;
+
+        if (filtered.length === 0) {
+          listEl.innerHTML = '<div class="text-xs text-slate-400 text-center py-6">找不到符合的工作地點</div>';
+          return;
+        }
+
+        listEl.innerHTML = filtered.map((loc) => {
+          const orderIdx = ctx.selectedLocationIds.indexOf(loc.id);
+          const isChecked = orderIdx !== -1;
+          return `
+            <button
+              type="button"
+              data-pick-assign-loc="${escapeHtml(loc.id)}"
+              class="w-full text-left px-3 py-2.5 rounded-xl border transition-colors flex items-center justify-between gap-2 ${isChecked ? 'bg-ocean-50 border-ocean-600 ring-1 ring-ocean-600' : 'bg-white border-slate-200 hover:bg-slate-50'}"
+            >
+              <div class="min-w-0">
+                <div class="text-xs font-bold text-slate-900 truncate">${escapeHtml(loc.name)}</div>
+                <div class="text-[11px] text-slate-500 truncate">${escapeHtml(loc.unit)}</div>
+              </div>
+              <span class="w-5 h-5 rounded-md border flex items-center justify-center shrink-0 font-mono tabular-nums text-[11px] font-bold ${isChecked ? 'border-ocean-600 bg-ocean-600 text-white' : 'border-slate-300 bg-white text-transparent'}">
+                ${isChecked ? orderIdx + 1 : ''}
+              </span>
+            </button>
+          `;
+        }).join('');
+      }
+
+      function confirmAssignLocationModal() {
+        const ctx = state.assignModalCtx;
+        if (!ctx) return;
+
+        const { personId, date, existingSchedules, selectedLocationIds } = ctx;
+        if (selectedLocationIds.length === 0) {
+          if (existingSchedules.length > 0) {
+            clearAssignedPersonOnDate();
+            return;
+          }
+          showToast('請至少勾選一個工作地點', 'warning');
+          return;
+        }
+
+        const prevIds = existingSchedules.map((s) => s.location_id);
+        const unchanged =
+          prevIds.length === selectedLocationIds.length &&
+          prevIds.every((id, i) => id === selectedLocationIds[i]);
+        if (unchanged) {
+          document.getElementById('modal-assign-location').classList.add('hidden');
+          return;
+        }
+
+        const existingIdSet = new Set(existingSchedules.map((s) => s.id));
+        state.schedules = state.schedules.filter((s) => !existingIdSet.has(s.id));
+
+        const operations = existingSchedules.map((s) => ({ type: 'delete', id: s.id }));
+        const nowIso = new Date().toISOString();
+
+        selectedLocationIds.forEach((locId, idx) => {
+          const seq = idx + 1;
+          state.schedules.push({
+            id: `SCH_${Date.now()}_${seq}_${Math.random().toString(36).slice(2, 5)}`,
+            date,
+            personnel_id: personId,
+            location_id: locId,
+            seq,
+            updated_at: nowIso,
+            _pending: true,
+          });
+          operations.push({
+            type: 'add',
+            date,
+            personnel_id: personId,
+            location_id: locId,
+            seq,
+          });
+        });
+
+        document.getElementById('modal-assign-location').classList.add('hidden');
+        renderAll();
+        showToast(`已依序更新 ${date} 共 ${selectedLocationIds.length} 處派工`, 'success');
+
+        enqueueMutation(() =>
+          callGasApi({
+            action: 'batchSyncSchedules',
+            token: state.token,
+            operations,
+          })
+        );
+      }
+
+      function clearAssignedPersonOnDate() {
+        const ctx = state.assignModalCtx;
+        if (!ctx || !ctx.existingSchedules || ctx.existingSchedules.length === 0) return;
+
+        const targetIds = ctx.existingSchedules.map((s) => s.id);
+        const idSet = new Set(targetIds);
+        state.schedules = state.schedules.filter((s) => !idSet.has(s.id));
+        document.getElementById('modal-assign-location').classList.add('hidden');
+        renderAll();
+        showToast(`已移除 ${ctx.date} 該員全部派工`, 'info');
+
+        if (targetIds.length === 1) {
+          enqueueMutation(() =>
+            callGasApi({ action: 'deleteSchedule', token: state.token, id: targetIds[0] })
+          );
+        } else {
+          enqueueMutation(() =>
+            callGasApi({
+              action: 'batchSyncSchedules',
+              token: state.token,
+              operations: targetIds.map((id) => ({ type: 'delete', id })),
+            })
+          );
+        }
+      }
+
+      // =====================================================
+      // 12. TOUCH / BATCH DAY DISPATCH MANAGER MODAL
+      // =====================================================
+      let dragRouteStop = null;
+
+      function populateBatchLocationSelect(preferredId = '') {
+        const selectEl = document.getElementById('batch-location-select');
+        const searchEl = document.getElementById('batch-location-search');
+        const keyword = (searchEl ? searchEl.value : '').trim().toLowerCase();
+
+        if (state.locations.length === 0) {
+          selectEl.innerHTML = '<option value="">尚無工作地點</option>';
+          return;
+        }
+
+        const filtered = keyword
+          ? state.locations.filter((l) =>
+              (l.name || '').toLowerCase().includes(keyword) ||
+              (l.unit || '').toLowerCase().includes(keyword)
+            )
+          : state.locations;
+
+        if (filtered.length === 0) {
+          selectEl.innerHTML = '<option value="">查無符合關鍵字之工作地點</option>';
+          return;
+        }
+
+        selectEl.innerHTML = filtered
+          .map((l) => `<option value="${escapeHtml(l.id)}">[${escapeHtml(l.unit)}] ${escapeHtml(l.name)}</option>`)
+          .join('');
+
+        if (preferredId && filtered.some((l) => l.id === preferredId)) {
+          selectEl.value = preferredId;
+        } else {
+          selectEl.value = filtered[0].id;
+        }
+      }
+
+      function syncPersonDayOrder(personId, dateStr, newOrderedLocIds, toastMsg) {
+        const oldScheds = sortPersonDaySchedules(
+          state.schedules.filter((s) => s.date === dateStr && s.personnel_id === personId)
+        );
+        const oldIdSet = new Set(oldScheds.map((s) => s.id));
+        const hasPending = oldScheds.some((s) => s._pending);
+        const oldIdsSnapshot = oldScheds.map((s) => s.id);
+
+        state.schedules = state.schedules.filter((s) => !oldIdSet.has(s.id));
+
+        const nowIso = new Date().toISOString();
+        newOrderedLocIds.forEach((locId, idx) => {
+          const seq = idx + 1;
+          state.schedules.push({
+            id: `SCH_${Date.now()}_${seq}_${Math.random().toString(36).slice(2, 6)}`,
+            date: dateStr,
+            personnel_id: personId,
+            location_id: locId,
+            seq,
+            updated_at: nowIso,
+            _pending: true,
+          });
+        });
+
+        renderAll();
+        renderDayDispatchContent();
+        if (toastMsg) showToast(toastMsg, 'success');
+
+        enqueueMutation(async () => {
+          let deleteIds = oldIdsSnapshot;
+          if (hasPending) {
+            const fresh = await callGasApi({ action: 'getAllData', token: state.token });
+            const source = fresh.data && typeof fresh.data === 'object' ? fresh.data : fresh;
+            const rawSchedules = Array.isArray(source.schedules)
+              ? source.schedules
+              : (Array.isArray(source.Schedules) ? source.Schedules : []);
+            deleteIds = rawSchedules
+              .filter((s) => normalizeDateString(s.date) === dateStr && String(s.personnel_id || '') === personId)
+              .map((s) => String(s.id || ''))
+              .filter(Boolean);
+          }
+
+          if (newOrderedLocIds.length === 0 && deleteIds.length === 1) {
+            await callGasApi({ action: 'deleteSchedule', token: state.token, id: deleteIds[0] });
+            return;
+          }
+
+          const operations = deleteIds.map((id) => ({ type: 'delete', id }));
+          newOrderedLocIds.forEach((locId, idx) => {
+            operations.push({
+              type: 'add',
+              date: dateStr,
+              personnel_id: personId,
+              location_id: locId,
+              seq: idx + 1,
+            });
+          });
+
+          if (operations.length === 0) return;
+          await callGasApi({
+            action: 'batchSyncSchedules',
+            token: state.token,
+            operations,
+          });
+        });
+      }
+
+      function openDayDispatchModal(dateStr) {
+        if (state.role !== 'admin') return;
+        state.dayDispatchDate = dateStr;
+        document.getElementById('day-dispatch-subtitle').textContent = `${dateStr} (${getWeekdayLabel(dateStr)})`;
+
+        const searchEl = document.getElementById('batch-location-search');
+        if (searchEl) searchEl.value = '';
+        populateBatchLocationSelect(state.selectedLocationId || '');
+
+        renderDayDispatchContent();
+        document.getElementById('modal-day-dispatch').classList.remove('hidden');
+      }
+
+      function renderDayDispatchContent() {
+        const dateStr = state.dayDispatchDate;
+        if (!dateStr) return;
+
+        const existingContainer = document.getElementById('day-dispatch-existing');
+        const checklistContainer = document.getElementById('batch-personnel-checklist');
+        const targetLocId = document.getElementById('batch-location-select').value;
+        const locationById = new Map(state.locations.map((l) => [l.id, l]));
+        const personById = new Map(state.personnel.map((p) => [p.id, p]));
+
+        const daySchedules = state.schedules.filter((s) => s.date === dateStr);
+        const schedsByPerson = new Map();
+        daySchedules.forEach((s) => {
+          if (!schedsByPerson.has(s.personnel_id)) schedsByPerson.set(s.personnel_id, []);
+          schedsByPerson.get(s.personnel_id).push(s);
+        });
+        schedsByPerson.forEach((list, pid) => {
+          schedsByPerson.set(pid, sortPersonDaySchedules(list));
+        });
+
+        const personnelRankMap = getPersonnelOrderRankMap();
+        const orderedPersonEntries = Array.from(schedsByPerson.entries()).sort(([pidA], [pidB]) => {
+          const rankA = personnelRankMap.has(pidA) ? personnelRankMap.get(pidA) : Number.MAX_SAFE_INTEGER;
+          const rankB = personnelRankMap.has(pidB) ? personnelRankMap.get(pidB) : Number.MAX_SAFE_INTEGER;
+          if (rankA !== rankB) return rankA - rankB;
+          return String(pidA).localeCompare(String(pidB));
+        });
+
+        if (daySchedules.length === 0) {
+          existingContainer.innerHTML = '<div class="text-xs text-slate-400 py-2">當日尚無任何排班紀錄。</div>';
+        } else {
+          const rowsHtml = [];
+          orderedPersonEntries.forEach(([pid, list]) => {
+            const p = personById.get(pid);
+            const personName = p ? p.name : '未知人員';
+            const canDrag = list.length > 1;
+            const stopsHtml = list
+              .map((s, idx) => {
+                const loc = locationById.get(s.location_id);
+                const locName = loc ? loc.name : '未知地點';
+                const chip = `
+                  <div
+                    class="route-stop-chip inline-flex items-center gap-1 pl-2 pr-1 py-1 rounded-lg border border-ocean-200 bg-white text-ocean-800 transition-colors ${canDrag ? 'cursor-grab active:cursor-grabbing hover:border-ocean-400' : ''}"
+                    data-route-stop-id="${escapeHtml(s.id)}"
+                    data-route-person-id="${escapeHtml(pid)}"
+                    draggable="${canDrag ? 'true' : 'false'}"
+                    title="${canDrag ? '拖曳可調整順序；點擊右側 × 移除此地點' : '點擊右側 × 移除此地點'}"
+                  >
+                    ${canDrag ? '<i data-lucide="grip-vertical" class="w-3 h-3 text-slate-400 shrink-0 pointer-events-none"></i>' : ''}
+                    <span class="font-mono tabular-nums text-[11px] font-bold text-ocean-600 select-none">${idx + 1}.</span>
+                    <span class="font-semibold select-none">${escapeHtml(locName)}</span>
+                    <button
+                      type="button"
+                      draggable="false"
+                      data-batch-delete-single="${escapeHtml(s.id)}"
+                      data-batch-person-id="${escapeHtml(pid)}"
+                      aria-label="移除 ${escapeHtml(locName)}"
+                      title="移除此地點"
+                      class="ml-0.5 w-4 h-4 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 flex items-center justify-center shrink-0"
+                    >
+                      <i data-lucide="x" class="w-3 h-3 pointer-events-none"></i>
+                    </button>
+                  </div>
+                `;
+                return idx < list.length - 1
+                  ? `${chip}<span class="text-slate-400 font-semibold select-none" aria-hidden="true">→</span>`
+                  : chip;
+              })
+              .join('');
+
+            rowsHtml.push(`
+              <div class="flex items-center justify-between gap-2 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs" data-person-row="${escapeHtml(pid)}">
+                <div class="flex items-center flex-wrap gap-1.5 min-w-0 flex-1">
+                  <span class="font-bold text-slate-900 shrink-0 mr-0.5">${escapeHtml(personName)}：</span>
+                  ${stopsHtml}
+                </div>
+                <button type="button" data-batch-delete-person="${escapeHtml(pid)}" class="h-7 px-2.5 text-xs font-medium text-red-600 hover:bg-red-50 rounded-lg whitespace-nowrap shrink-0">
+                  移除
+                </button>
+              </div>
+            `);
+          });
+          existingContainer.innerHTML = rowsHtml.join('');
+        }
+
+        const orderedPersonnel = getOrderedPersonnelList();
+        checklistContainer.innerHTML = orderedPersonnel.map((p) => {
+          const onLeave = isPersonOnLeave(p.id, dateStr);
+          const existingList = schedsByPerson.get(p.id) || [];
+          const alreadyAtTarget = existingList.some((s) => s.location_id === targetLocId);
+          const existingLocNames = existingList
+            .map((s) => locationById.get(s.location_id)?.name)
+            .filter(Boolean);
+          const yearCount = getYearlyAttendanceCount(p.id, state.calendarYear);
+          const isDisabled = onLeave || alreadyAtTarget;
+
+          let statusHtml = '<div class="text-[11px] text-slate-400 mt-0.5">當日未排程</div>';
+          if (onLeave) {
+            statusHtml = '<div class="text-[11px] font-semibold text-red-600 mt-0.5">當日休假中（禁止派工）</div>';
+          } else if (alreadyAtTarget) {
+            statusHtml = `<div class="text-[11px] font-semibold text-emerald-700 mt-0.5 truncate">已排定於此地點${existingLocNames.length > 1 ? `（共${existingLocNames.length}處）` : ''}</div>`;
+          } else if (existingLocNames.length > 0) {
+            statusHtml = `<div class="text-[11px] text-ocean-700 truncate mt-0.5">已排：${existingLocNames.map((n, i) => `${i + 1}.${escapeHtml(n)}`).join('、')}（可追加）</div>`;
+          }
+
+          return `
+            <label class="flex items-start gap-2.5 p-2.5 rounded-xl border ${onLeave ? 'border-red-200 bg-red-50/70 opacity-75 cursor-not-allowed' : (alreadyAtTarget ? 'border-emerald-200 bg-emerald-50/50 opacity-80 cursor-not-allowed' : 'border-slate-200 hover:bg-slate-50 cursor-pointer')}">
+              <input type="checkbox" value="${escapeHtml(p.id)}" ${isDisabled ? 'disabled' : ''} class="batch-person-checkbox mt-0.5 w-4 h-4 rounded border-slate-300 text-ocean-600 focus:ring-ocean-600 disabled:opacity-40" />
+              <div class="min-w-0 flex-1">
+                <div class="text-xs font-bold ${onLeave ? 'text-red-800' : 'text-slate-900'} truncate">
+                  ${escapeHtml(p.name)} <span class="font-mono tabular-nums ${onLeave ? 'text-red-700' : 'text-ocean-700'}">(${yearCount})</span>
+                  <span class="font-normal ${onLeave ? 'text-red-600' : 'text-slate-500'}">· ${escapeHtml(p.unit)}</span>
+                </div>
+                ${statusHtml}
+              </div>
+            </label>
+          `;
+        }).join('');
+
+        updateBatchSelectionSummary();
+        refreshLucide();
+      }
+
+      function updateBatchSelectionSummary() {
+        const dateStr = state.dayDispatchDate;
+        const targetLocId = document.getElementById('batch-location-select').value;
+        const checkedIds = Array.from(document.querySelectorAll('.batch-person-checkbox:checked')).map((cb) => cb.value);
+
+        document.getElementById('batch-selected-count').textContent = `已選 ${checkedIds.length} 人`;
+
+        const multiLocPeople = checkedIds.filter((pid) => {
+          return state.schedules.some((s) => s.date === dateStr && s.personnel_id === pid && s.location_id !== targetLocId);
+        });
+
+        const noticeEl = document.getElementById('batch-conflict-notice');
+        if (multiLocPeople.length > 0) {
+          const names = multiLocPeople.map((pid) => state.personnel.find((p) => p.id === pid)?.name).filter(Boolean);
+          noticeEl.textContent = `說明：${names.join('、')} 當日已有其他地點派工，確認後將依序追加此工作地點（不覆蓋原派工）。`;
+          noticeEl.classList.remove('hidden');
+        } else {
+          noticeEl.classList.add('hidden');
+        }
+      }
+
+      function submitBatchDispatch() {
+        const dateStr = state.dayDispatchDate;
+        const targetLocId = document.getElementById('batch-location-select').value;
+        const checkedIds = Array.from(document.querySelectorAll('.batch-person-checkbox:checked')).map((cb) => cb.value);
+
+        if (!targetLocId) {
+          showToast('請先選擇工作地點', 'warning');
+          return;
+        }
+        if (checkedIds.length === 0) {
+          showToast('請至少勾選一位人員', 'warning');
+          return;
+        }
+
+        const leaveBlocked = checkedIds.filter((pid) => isPersonOnLeave(pid, dateStr));
+        if (leaveBlocked.length > 0) {
+          showToast('包含當日休假人員，無法指派工作', 'warning');
+          return;
+        }
+
+        const operations = [];
+        let addedCount = 0;
+        const nowIso = new Date().toISOString();
+
+        checkedIds.forEach((pid) => {
+          const existingOrdered = sortPersonDaySchedules(
+            state.schedules.filter((s) => s.date === dateStr && s.personnel_id === pid)
+          );
+          if (existingOrdered.some((s) => s.location_id === targetLocId)) {
+            return; // Already scheduled at this exact location
+          }
+
+          const hasUnnumberedLegacy = existingOrdered.some((s) => getValidScheduleSeq(s) === null);
+          if (hasUnnumberedLegacy && existingOrdered.length > 0 && !existingOrdered.some((s) => s._pending)) {
+            // Heal legacy blank-seq rows while keeping their original order ahead of the appended location
+            const combinedLocIds = [...existingOrdered.map((s) => s.location_id), targetLocId];
+            const oldIdSet = new Set(existingOrdered.map((s) => s.id));
+            state.schedules = state.schedules.filter((s) => !oldIdSet.has(s.id));
+
+            existingOrdered.forEach((s) => {
+              operations.push({ type: 'delete', id: s.id });
+            });
+            combinedLocIds.forEach((locId, idx) => {
+              const seq = idx + 1;
+              state.schedules.push({
+                id: `SCH_${Date.now()}_${seq}_${Math.random().toString(36).slice(2, 6)}`,
+                date: dateStr,
+                personnel_id: pid,
+                location_id: locId,
+                seq,
+                updated_at: nowIso,
+                _pending: true,
+              });
+              operations.push({
+                type: 'add',
+                date: dateStr,
+                personnel_id: pid,
+                location_id: locId,
+                seq,
+              });
+            });
+            addedCount += 1;
+            return;
+          }
+
+          const maxSeq = existingOrdered.reduce((max, s, idx) => {
+            const val = getValidScheduleSeq(s) ?? (idx + 1);
+            return Math.max(max, val);
+          }, existingOrdered.length);
+          const nextSeq = maxSeq + 1;
+
+          state.schedules.push({
+            id: `SCH_${Date.now()}_${nextSeq}_${Math.random().toString(36).slice(2, 6)}`,
+            date: dateStr,
+            personnel_id: pid,
+            location_id: targetLocId,
+            seq: nextSeq,
+            updated_at: nowIso,
+            _pending: true,
+          });
+          operations.push({
+            type: 'add',
+            date: dateStr,
+            personnel_id: pid,
+            location_id: targetLocId,
+            seq: nextSeq,
+          });
+          addedCount += 1;
+        });
+
+        if (addedCount === 0) {
+          showToast('所選人員皆已排定於此地點', 'info');
+          return;
+        }
+
+        renderAll();
+        renderDayDispatchContent();
+        showToast(`已追加 ${dateStr} 共 ${addedCount} 筆派工排程`, 'success');
+
+        enqueueMutation(() =>
+          callGasApi({
+            action: 'batchSyncSchedules',
+            token: state.token,
+            operations,
+          })
+        );
+      }
+
+      // =====================================================
+      // 13. MOBILE 3-PAGE SCROLL SNAP & TAB SYNC
+      // =====================================================
+      function goToMobilePage(pageIndex) {
+        const container = document.getElementById('workbench-container');
+        const pageWidth = container.clientWidth;
+        state.mobilePage = pageIndex;
+        container.scrollTo({ left: pageIndex * pageWidth, behavior: 'smooth' });
+        updateMobileTabsUI();
+        if (pageIndex === 2 && mainMap) {
+          setTimeout(() => mainMap.invalidateSize(), 260);
+        }
+      }
+
+      function updateMobileTabsUI() {
+        document.querySelectorAll('.mobile-tab-btn').forEach((btn) => {
+          const idx = Number(btn.dataset.mobileTab);
+          const active = idx === state.mobilePage;
+          btn.className = active
+            ? 'mobile-tab-btn min-h-[36px] text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1.5 whitespace-nowrap bg-white text-ocean-700 shadow-sm'
+            : 'mobile-tab-btn min-h-[36px] text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1.5 whitespace-nowrap text-slate-500 hover:text-slate-800';
+        });
+      }
+
+      // =====================================================
+      // 14. LOGIN & SESSION BOOTSTRAP
+      // =====================================================
+      function showLoginScreen(errMsg = '') {
+        document.getElementById('app-shell').classList.add('hidden');
+        document.getElementById('login-screen').classList.remove('hidden');
+        const errEl = document.getElementById('login-error');
+        if (errMsg) {
+          errEl.textContent = errMsg;
+          errEl.classList.remove('hidden');
+        } else {
+          errEl.classList.add('hidden');
+        }
+        refreshLucide();
+      }
+
+      async function enterAuthenticatedWorkspace() {
+        document.getElementById('login-screen').classList.add('hidden');
+        document.getElementById('app-shell').classList.remove('hidden');
+        document.getElementById('data-loading-overlay').classList.remove('hidden');
+        document.getElementById('workbench-container').classList.add('hidden');
+        refreshLucide();
+
+        try {
+          const res = await callGasApi({ action: 'getAllData', token: state.token });
+          if (res && res.success === false) {
+            throw new Error(res.message || res.error || '讀取資料失敗');
+          }
+          normalizeAndStoreData(res);
+
+          document.getElementById('data-loading-overlay').classList.add('hidden');
+          document.getElementById('workbench-container').classList.remove('hidden');
+
+          initMainMap();
+          renderAll();
+          updateMobileTabsUI();
+          setTimeout(() => {
+            if (mainMap) {
+              mainMap.invalidateSize();
+              fitAllMapPins();
+            }
+          }, 120);
+        } catch (err) {
+          document.getElementById('data-loading-overlay').classList.add('hidden');
+          showLoginScreen(err.message || '載入資料時發生錯誤，請重新登入。');
+        }
+      }
+
+      // =====================================================
+      // 15. EVENT LISTENERS BINDING
+      // =====================================================
+      function bindEvents() {
+        // Password visibility toggle
+        document.getElementById('toggle-password-visibility').addEventListener('click', () => {
+          const input = document.getElementById('login-password');
+          input.type = input.type === 'password' ? 'text' : 'password';
+        });
+
+        // Login form submit
+        document.getElementById('login-form').addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const pwdInput = document.getElementById('login-password');
+          const submitBtn = document.getElementById('login-submit-btn');
+          const errEl = document.getElementById('login-error');
+          const password = pwdInput.value;
+
+          if (!password) return;
+          errEl.classList.add('hidden');
+          submitBtn.disabled = true;
+          submitBtn.innerHTML = '<span class="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin"></span><span>驗證中...</span>';
+
+          try {
+            const res = await callGasApi({ action: 'login', password });
+            if (!res || !res.success || !res.token) {
+              throw new Error((res && (res.message || res.error)) || '密碼錯誤，請重新輸入。');
+            }
+            state.token = res.token;
+            state.role = res.role === 'admin' ? 'admin' : 'viewer';
+            sessionStorage.setItem(STORAGE_KEYS.TOKEN, state.token);
+            sessionStorage.setItem(STORAGE_KEYS.ROLE, state.role);
+            pwdInput.value = '';
+            await enterAuthenticatedWorkspace();
+          } catch (err) {
+            errEl.textContent = err.message || '驗證失敗，請確認密碼或網路連線。';
+            errEl.classList.remove('hidden');
+          } finally {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '<span>驗證並進入系統</span><i data-lucide="arrow-right" class="w-4 h-4"></i>';
+            refreshLucide();
+          }
+        });
+
+        // Logout
+        document.getElementById('logout-btn').addEventListener('click', () => {
+          sessionStorage.removeItem(STORAGE_KEYS.TOKEN);
+          sessionStorage.removeItem(STORAGE_KEYS.ROLE);
+          state.token = null;
+          state.role = null;
+          state.personnel = [];
+          state.locations = [];
+          state.schedules = [];
+          resetSelection();
+          showLoginScreen();
+        });
+
+        // Reset button
+        document.getElementById('reset-selection-btn').addEventListener('click', resetSelection);
+
+        // Location live search
+        document.getElementById('location-search-input').addEventListener('input', (e) => {
+          state.locationSearch = e.target.value;
+          renderLocationsList();
+          refreshLucide();
+        });
+
+        // Personnel list event delegation (toggle unit, click card, edit, delete, dragstart)
+        const pContainer = document.getElementById('personnel-list-container');
+        pContainer.addEventListener('click', (e) => {
+          const toggleBtn = e.target.closest('[data-toggle-person-unit]');
+          if (toggleBtn) {
+            const unit = toggleBtn.dataset.togglePersonUnit;
+            if (state.expandedPersonnelUnits.has(unit)) state.expandedPersonnelUnits.delete(unit);
+            else state.expandedPersonnelUnits.add(unit);
+            renderPersonnelList();
+            refreshLucide();
+            return;
+          }
+
+          const editBtn = e.target.closest('[data-edit-person]');
+          if (editBtn) {
+            e.stopPropagation();
+            openPersonnelModal(editBtn.dataset.editPerson);
+            return;
+          }
+
+          const delBtn = e.target.closest('[data-delete-person]');
+          if (delBtn) {
+            e.stopPropagation();
+            requestDeletePersonnel(delBtn.dataset.deletePerson);
+            return;
+          }
+
+          if (e.target.closest('[data-stop-prop="true"]')) return;
+
+          const card = e.target.closest('[data-person-card]');
+          if (card) {
+            selectPerson(card.dataset.personCard);
+          }
+        });
+
+        // Transparent 1x1 image to suppress static browser drag snapshot in favor of live dynamic ghost
+        const transparentDragImg = new Image();
+        transparentDragImg.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+
+        function updateDragGhost(clientX, clientY, isForbidden, dateStr) {
+          const ghost = document.getElementById('drag-ghost-pill');
+          if (!state.draggedPersonId) {
+            ghost.classList.add('hidden');
+            return;
+          }
+          const person = state.personnel.find((p) => p.id === state.draggedPersonId);
+          if (!person) {
+            ghost.classList.add('hidden');
+            return;
+          }
+
+          if (clientX > 0 || clientY > 0) {
+            const x = Math.min(window.innerWidth - 220, Math.max(8, clientX + 14));
+            const y = Math.min(window.innerHeight - 52, Math.max(8, clientY + 14));
+            ghost.style.transform = `translate3d(${x}px, ${y}px, 0)`;
+          }
+          ghost.classList.remove('hidden');
+
+          if (isForbidden) {
+            ghost.className = 'fixed top-0 left-0 z-[80] pointer-events-none px-3 py-2 rounded-xl border-2 border-red-700 bg-red-600 text-white shadow-xl text-xs font-bold flex items-center gap-2 whitespace-nowrap';
+            ghost.innerHTML = `
+              <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/></svg>
+              <span>${escapeHtml(person.name)} · ${escapeHtml(dateStr)} 休假禁止派工</span>
+            `;
+          } else {
+            ghost.className = 'fixed top-0 left-0 z-[80] pointer-events-none px-3 py-2 rounded-xl border-2 border-ocean-600 bg-white text-slate-900 shadow-xl text-xs font-bold flex items-center gap-2 whitespace-nowrap';
+            ghost.innerHTML = `
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0F4C81" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+              <span>${escapeHtml(person.name)}${dateStr ? ` · 放開指派至 ${escapeHtml(dateStr)}` : ' · 拖曳至日曆日期'}</span>
+            `;
+          }
+        }
+
+        function clearDragVisuals() {
+          document.querySelectorAll('.drag-over-cell').forEach((c) => c.classList.remove('drag-over-cell'));
+          document.querySelectorAll('.drag-over-forbidden').forEach((c) => c.classList.remove('drag-over-forbidden'));
+          document.getElementById('drag-ghost-pill').classList.add('hidden');
+        }
+
+        pContainer.addEventListener('dragstart', (e) => {
+          if (state.role !== 'admin') return;
+          const card = e.target.closest('[data-person-card]');
+          if (!card) return;
+          const pid = card.dataset.personCard;
+          state.draggedPersonId = pid;
+          state.dragHoveredDate = null;
+          state.dragHoveredForbidden = false;
+          e.dataTransfer.effectAllowed = 'copy';
+          e.dataTransfer.setData('text/plain', pid);
+          if (typeof e.dataTransfer.setDragImage === 'function') {
+            e.dataTransfer.setDragImage(transparentDragImg, 0, 0);
+          }
+          updateDragGhost(e.clientX, e.clientY, false, '');
+        });
+
+        document.addEventListener('dragover', (e) => {
+          if (!state.draggedPersonId) return;
+          const cell = e.target.closest ? e.target.closest('[data-cal-date]') : null;
+          if (!cell) {
+            state.dragHoveredDate = null;
+            state.dragHoveredForbidden = false;
+            document.querySelectorAll('.drag-over-cell').forEach((c) => c.classList.remove('drag-over-cell'));
+            document.querySelectorAll('.drag-over-forbidden').forEach((c) => c.classList.remove('drag-over-forbidden'));
+            updateDragGhost(e.clientX, e.clientY, false, '');
+          }
+        });
+
+        pContainer.addEventListener('dragend', () => {
+          const blockedPid = state.draggedPersonId;
+          const blockedDate = state.dragHoveredForbidden ? state.dragHoveredDate : null;
+          state.draggedPersonId = null;
+          state.dragHoveredDate = null;
+          state.dragHoveredForbidden = false;
+          clearDragVisuals();
+
+          if (blockedPid && blockedDate) {
+            const p = state.personnel.find((x) => x.id === blockedPid);
+            showToast(`${p ? p.name : '該員'} 於 ${blockedDate} 已設定請假，無法排入休假日工作！`, 'warning');
+          }
+        });
+
+        // Locations list event delegation
+        const lContainer = document.getElementById('locations-list-container');
+        lContainer.addEventListener('click', (e) => {
+          const toggleBtn = e.target.closest('[data-toggle-location-unit]');
+          if (toggleBtn) {
+            const unit = toggleBtn.dataset.toggleLocationUnit;
+            if (state.expandedLocationUnits.has(unit)) state.expandedLocationUnits.delete(unit);
+            else state.expandedLocationUnits.add(unit);
+            renderLocationsList();
+            refreshLucide();
+            return;
+          }
+
+          const editBtn = e.target.closest('[data-edit-location]');
+          if (editBtn) {
+            e.stopPropagation();
+            openLocationModal(editBtn.dataset.editLocation);
+            return;
+          }
+
+          const delBtn = e.target.closest('[data-delete-location]');
+          if (delBtn) {
+            e.stopPropagation();
+            requestDeleteLocation(delBtn.dataset.deleteLocation);
+            return;
+          }
+
+          if (e.target.closest('[data-stop-prop="true"]')) return;
+
+          const card = e.target.closest('[data-location-card]');
+          if (card) {
+            selectLocation(card.dataset.locationCard, false);
+          }
+        });
+
+        // Calendar navigation & view switch
+        document.getElementById('cal-prev-btn').addEventListener('click', () => {
+          if (state.calendarView === 'month') {
+            if (state.calendarMonth === 0) {
+              state.calendarMonth = 11;
+              state.calendarYear -= 1;
+            } else {
+              state.calendarMonth -= 1;
+            }
+          } else {
+            selectDate(addDays(state.activeDate, -1));
+            return;
+          }
+          renderPersonnelList();
+          renderCalendar();
+          refreshLucide();
+        });
+
+        document.getElementById('cal-next-btn').addEventListener('click', () => {
+          if (state.calendarView === 'month') {
+            if (state.calendarMonth === 11) {
+              state.calendarMonth = 0;
+              state.calendarYear += 1;
+            } else {
+              state.calendarMonth += 1;
+            }
+          } else {
+            selectDate(addDays(state.activeDate, 1));
+            return;
+          }
+          renderPersonnelList();
+          renderCalendar();
+          refreshLucide();
+        });
+
+        document.getElementById('cal-today-btn').addEventListener('click', () => {
+          selectDate(getTodayStr());
+        });
+
+        document.querySelectorAll('.cal-view-btn').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            state.calendarView = btn.dataset.calView;
+            renderCalendar();
+            refreshLucide();
+          });
+        });
+
+        // Calendar body delegation (click date, + dispatch, day detail focus, hover full name list, drag/drop)
+        const calBody = document.getElementById('calendar-body-container');
+        const calHoverTooltip = document.getElementById('cal-hover-tooltip');
+
+        function positionCalHoverTooltip(clientX, clientY) {
+          const tipW = calHoverTooltip.offsetWidth || 200;
+          const tipH = calHoverTooltip.offsetHeight || 40;
+          const x = Math.min(window.innerWidth - tipW - 12, Math.max(8, clientX + 12));
+          const y = clientY + 14 + tipH > window.innerHeight - 8
+            ? Math.max(8, clientY - tipH - 10)
+            : clientY + 14;
+          calHoverTooltip.style.transform = `translate3d(${x}px, ${y}px, 0)`;
+        }
+
+        calBody.addEventListener('mouseover', (e) => {
+          const target = e.target.closest('[data-cal-tooltip]');
+          if (!target) return;
+          const text = target.dataset.calTooltip;
+          if (!text) return;
+          calHoverTooltip.textContent = text;
+          calHoverTooltip.classList.remove('hidden');
+          positionCalHoverTooltip(e.clientX, e.clientY);
+        });
+
+        calBody.addEventListener('mousemove', (e) => {
+          if (calHoverTooltip.classList.contains('hidden')) return;
+          const target = e.target.closest('[data-cal-tooltip]');
+          if (!target) {
+            calHoverTooltip.classList.add('hidden');
+            return;
+          }
+          positionCalHoverTooltip(e.clientX, e.clientY);
+        });
+
+        calBody.addEventListener('mouseout', (e) => {
+          const target = e.target.closest('[data-cal-tooltip]');
+          if (!target) return;
+          const related = e.relatedTarget ? e.relatedTarget.closest('[data-cal-tooltip]') : null;
+          if (related !== target) {
+            calHoverTooltip.classList.add('hidden');
+          }
+        });
+
+        calBody.addEventListener('mouseleave', () => {
+          calHoverTooltip.classList.add('hidden');
+        });
+
+        calBody.addEventListener('click', (e) => {
+          calHoverTooltip.classList.add('hidden');
+          const dispatchBtn = e.target.closest('[data-open-day-dispatch]');
+          if (dispatchBtn) {
+            e.stopPropagation();
+            openDayDispatchModal(dispatchBtn.dataset.openDayDispatch);
+            return;
+          }
+
+          const removeSchedBtn = e.target.closest('[data-remove-schedule]');
+          if (removeSchedBtn) {
+            e.stopPropagation();
+            const schedId = removeSchedBtn.dataset.removeSchedule;
+            state.schedules = state.schedules.filter((s) => s.id !== schedId);
+            renderAll();
+            enqueueMutation(() =>
+              callGasApi({ action: 'deleteSchedule', token: state.token, id: schedId })
+            );
+            return;
+          }
+
+          const focusLocBtn = e.target.closest('[data-focus-loc]');
+          if (focusLocBtn) {
+            selectLocation(focusLocBtn.dataset.focusLoc, false);
+            return;
+          }
+
+          const focusPersonBtn = e.target.closest('[data-focus-person]');
+          if (focusPersonBtn) {
+            selectPerson(focusPersonBtn.dataset.focusPerson);
+            return;
+          }
+
+          const dateCell = e.target.closest('[data-cal-date]');
+          if (dateCell) {
+            selectDate(dateCell.dataset.calDate);
+          }
+        });
+
+        // Desktop Drag & Drop onto Month Calendar Cells (with real-time leave prohibition UX)
+        calBody.addEventListener('dragover', (e) => {
+          if (state.role !== 'admin' || !state.draggedPersonId) return;
+          const cell = e.target.closest('[data-cal-date]');
+          if (!cell) return;
+          const dateStr = cell.dataset.calDate;
+          const forbidden = isPersonOnLeave(state.draggedPersonId, dateStr);
+
+          state.dragHoveredDate = dateStr;
+          state.dragHoveredForbidden = forbidden;
+
+          document.querySelectorAll('.drag-over-cell').forEach((c) => {
+            if (c !== cell) c.classList.remove('drag-over-cell');
+          });
+          document.querySelectorAll('.drag-over-forbidden').forEach((c) => {
+            if (c !== cell) c.classList.remove('drag-over-forbidden');
+          });
+
+          if (forbidden) {
+            // Leave dropEffect='none' without preventDefault or explicit none so native forbidden cursor shows
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'none';
+            cell.classList.remove('drag-over-cell');
+            cell.classList.add('drag-over-forbidden');
+            updateDragGhost(e.clientX, e.clientY, true, dateStr);
+          } else {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'copy';
+            cell.classList.remove('drag-over-forbidden');
+            cell.classList.add('drag-over-cell');
+            updateDragGhost(e.clientX, e.clientY, false, dateStr);
+          }
+        });
+
+        calBody.addEventListener('dragleave', (e) => {
+          const cell = e.target.closest('[data-cal-date]');
+          if (cell && !cell.contains(e.relatedTarget)) {
+            cell.classList.remove('drag-over-cell');
+            cell.classList.remove('drag-over-forbidden');
+          }
+        });
+
+        calBody.addEventListener('drop', (e) => {
+          if (state.role !== 'admin') return;
+          const cell = e.target.closest('[data-cal-date]');
+          if (!cell) return;
+          e.preventDefault();
+          const personId = e.dataTransfer.getData('text/plain') || state.draggedPersonId;
+          const dateStr = cell.dataset.calDate;
+          state.dragHoveredDate = null;
+          state.dragHoveredForbidden = false;
+          clearDragVisuals();
+
+          if (personId && dateStr) {
+            if (isPersonOnLeave(personId, dateStr)) {
+              const p = state.personnel.find((x) => x.id === personId);
+              showToast(`${p ? p.name : '該員'} 於 ${dateStr} 已設定請假，無法排入休假日工作！`, 'warning');
+              return;
+            }
+            openAssignLocationModal(personId, dateStr);
+          }
+        });
+
+        // Map layer switcher & fit all
+        document.getElementById('layer-switcher-toggle').addEventListener('click', (e) => {
+          e.stopPropagation();
+          document.getElementById('layer-switcher-menu').classList.toggle('hidden');
+        });
+
+        document.querySelectorAll('.layer-option').forEach((btn) => {
+          btn.addEventListener('click', () => switchMapLayer(btn.dataset.layer));
+        });
+
+        document.addEventListener('click', (e) => {
+          const menu = document.getElementById('layer-switcher-menu');
+          const toggle = document.getElementById('layer-switcher-toggle');
+          if (!menu.contains(e.target) && !toggle.contains(e.target)) {
+            menu.classList.add('hidden');
+          }
+        });
+
+        document.getElementById('fit-all-pins-btn').addEventListener('click', fitAllMapPins);
+
+        // Admin Add buttons & forms
+        document.getElementById('add-person-btn').addEventListener('click', () => openPersonnelModal(null));
+        document.getElementById('add-location-btn').addEventListener('click', () => openLocationModal(null));
+        document.getElementById('add-leave-date-btn').addEventListener('click', addLeaveDateFromInput);
+        document.getElementById('person-leave-dates-list').addEventListener('click', (e) => {
+          const rmBtn = e.target.closest('[data-remove-leave-date]');
+          if (!rmBtn) return;
+          const dateToRemove = rmBtn.dataset.removeLeaveDate;
+          state.editingLeaveDates = state.editingLeaveDates.filter((d) => d !== dateToRemove);
+          renderLeaveDateTags();
+        });
+        document.getElementById('form-personnel').addEventListener('submit', savePersonnelFromModal);
+        document.getElementById('form-location').addEventListener('submit', saveLocationFromModal);
+        document.getElementById('location-x').addEventListener('input', updateLocationPreviewCoords);
+        document.getElementById('location-y').addEventListener('input', updateLocationPreviewCoords);
+
+        // Assign Location Modal handlers (ordered multi-select)
+        document.getElementById('assign-loc-search').addEventListener('input', renderAssignLocationOptions);
+        document.getElementById('assign-order-preview').addEventListener('click', (e) => {
+          const resetBtn = e.target.closest('#assign-reset-order-btn');
+          if (!resetBtn || !state.assignModalCtx) return;
+          state.assignModalCtx.selectedLocationIds = [];
+          renderAssignLocationOptions();
+        });
+        document.getElementById('assign-location-list').addEventListener('click', (e) => {
+          const btn = e.target.closest('[data-pick-assign-loc]');
+          if (!btn || !state.assignModalCtx) return;
+          const locId = btn.dataset.pickAssignLoc;
+          const arr = state.assignModalCtx.selectedLocationIds;
+          const idx = arr.indexOf(locId);
+          if (idx !== -1) {
+            arr.splice(idx, 1);
+          } else {
+            arr.push(locId);
+          }
+          renderAssignLocationOptions();
+        });
+        document.getElementById('assign-confirm-btn').addEventListener('click', confirmAssignLocationModal);
+        document.getElementById('assign-clear-btn').addEventListener('click', clearAssignedPersonOnDate);
+
+        // Day Dispatch Modal handlers
+        document.getElementById('batch-location-search').addEventListener('input', () => {
+          const prevVal = document.getElementById('batch-location-select').value;
+          populateBatchLocationSelect(prevVal);
+          renderDayDispatchContent();
+        });
+        document.getElementById('batch-location-select').addEventListener('change', renderDayDispatchContent);
+        document.getElementById('batch-personnel-checklist').addEventListener('change', updateBatchSelectionSummary);
+        document.getElementById('batch-assign-submit-btn').addEventListener('click', submitBatchDispatch);
+
+        const dayDispatchExistingEl = document.getElementById('day-dispatch-existing');
+        dayDispatchExistingEl.addEventListener('click', (e) => {
+          const singleBtn = e.target.closest('[data-batch-delete-single]');
+          if (singleBtn) {
+            e.stopPropagation();
+            const schedId = singleBtn.dataset.batchDeleteSingle;
+            const pid = singleBtn.dataset.batchPersonId;
+            const dateStr = state.dayDispatchDate;
+            if (!pid || !dateStr) return;
+            const personScheds = sortPersonDaySchedules(
+              state.schedules.filter((s) => s.date === dateStr && s.personnel_id === pid)
+            );
+            const remainingLocIds = personScheds
+              .filter((s) => s.id !== schedId)
+              .map((s) => s.location_id);
+            syncPersonDayOrder(pid, dateStr, remainingLocIds, '已取消該地點派工並重排順序');
+            return;
+          }
+
+          const personBtn = e.target.closest('[data-batch-delete-person]');
+          if (personBtn) {
+            const pid = personBtn.dataset.batchDeletePerson;
+            const dateStr = state.dayDispatchDate;
+            if (!pid || !dateStr) return;
+            syncPersonDayOrder(pid, dateStr, [], '已移除該員當日全部派工');
+          }
+        });
+
+        dayDispatchExistingEl.addEventListener('dragstart', (e) => {
+          if (e.target.closest('[data-batch-delete-single]')) {
+            e.preventDefault();
+            return;
+          }
+          const chip = e.target.closest('[data-route-stop-id]');
+          if (!chip || chip.getAttribute('draggable') !== 'true') return;
+          dragRouteStop = {
+            schedId: chip.dataset.routeStopId,
+            personId: chip.dataset.routePersonId,
+          };
+          e.dataTransfer.effectAllowed = 'move';
+          e.dataTransfer.setData('text/plain', chip.dataset.routeStopId);
+          chip.classList.add('opacity-50');
+        });
+
+        dayDispatchExistingEl.addEventListener('dragover', (e) => {
+          if (!dragRouteStop) return;
+          const targetChip = e.target.closest('[data-route-stop-id]');
+          if (!targetChip || targetChip.dataset.routePersonId !== dragRouteStop.personId) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+          dayDispatchExistingEl.querySelectorAll('.route-stop-chip').forEach((el) => {
+            if (el !== targetChip) el.classList.remove('ring-2', 'ring-ocean-600', 'bg-ocean-50');
+          });
+          if (targetChip.dataset.routeStopId !== dragRouteStop.schedId) {
+            targetChip.classList.add('ring-2', 'ring-ocean-600', 'bg-ocean-50');
+          }
+        });
+
+        dayDispatchExistingEl.addEventListener('dragleave', (e) => {
+          const targetChip = e.target.closest('[data-route-stop-id]');
+          if (targetChip && !targetChip.contains(e.relatedTarget)) {
+            targetChip.classList.remove('ring-2', 'ring-ocean-600', 'bg-ocean-50');
+          }
+        });
+
+        dayDispatchExistingEl.addEventListener('drop', (e) => {
+          const targetChip = e.target.closest('[data-route-stop-id]');
+          dayDispatchExistingEl.querySelectorAll('.route-stop-chip').forEach((el) => {
+            el.classList.remove('ring-2', 'ring-ocean-600', 'bg-ocean-50', 'opacity-50');
+          });
+          if (!dragRouteStop || !targetChip) {
+            dragRouteStop = null;
+            return;
+          }
+          const { schedId: draggedId, personId } = dragRouteStop;
+          const targetId = targetChip.dataset.routeStopId;
+          const targetPersonId = targetChip.dataset.routePersonId;
+          dragRouteStop = null;
+
+          if (targetPersonId !== personId || draggedId === targetId) return;
+          e.preventDefault();
+          const dateStr = state.dayDispatchDate;
+          if (!dateStr) return;
+
+          const personScheds = sortPersonDaySchedules(
+            state.schedules.filter((s) => s.date === dateStr && s.personnel_id === personId)
+          );
+          const fromIdx = personScheds.findIndex((s) => s.id === draggedId);
+          const toIdx = personScheds.findIndex((s) => s.id === targetId);
+          if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return;
+
+          const reordered = [...personScheds];
+          const [moved] = reordered.splice(fromIdx, 1);
+          reordered.splice(toIdx, 0, moved);
+          syncPersonDayOrder(
+            personId,
+            dateStr,
+            reordered.map((s) => s.location_id),
+            '已更新派工順序'
+          );
+        });
+
+        dayDispatchExistingEl.addEventListener('dragend', () => {
+          dragRouteStop = null;
+          dayDispatchExistingEl.querySelectorAll('.route-stop-chip').forEach((el) => {
+            el.classList.remove('ring-2', 'ring-ocean-600', 'bg-ocean-50', 'opacity-50');
+          });
+        });
+
+        // Close modal buttons
+        document.querySelectorAll('[data-close-modal]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            document.getElementById(btn.dataset.closeModal).classList.add('hidden');
+          });
+        });
+
+        // Confirm modal buttons
+        document.getElementById('confirm-cancel-btn').addEventListener('click', closeConfirmDialog);
+        document.getElementById('confirm-ok-btn').addEventListener('click', () => {
+          const fn = state.pendingConfirmFn;
+          closeConfirmDialog();
+          if (typeof fn === 'function') fn();
+        });
+
+        // Mobile tabs
+        document.querySelectorAll('.mobile-tab-btn').forEach((btn) => {
+          btn.addEventListener('click', () => goToMobilePage(Number(btn.dataset.mobileTab)));
+        });
+
+        // Sync mobile scroll-snap swipe position to tab bar & Leaflet invalidateSize
+        const workbench = document.getElementById('workbench-container');
+        let scrollDebounce = null;
+        workbench.addEventListener('scroll', () => {
+          if (window.innerWidth >= 1024) return;
+          clearTimeout(scrollDebounce);
+          scrollDebounce = setTimeout(() => {
+            const pageW = workbench.clientWidth || 1;
+            const idx = Math.round(workbench.scrollLeft / pageW);
+            if (idx !== state.mobilePage) {
+              state.mobilePage = idx;
+              updateMobileTabsUI();
+              if (idx === 2 && mainMap) {
+                mainMap.invalidateSize();
+              }
+            }
+          }, 80);
+        });
+
+        // Resize observer for Leaflet map
+        window.addEventListener('resize', () => {
+          if (mainMap) mainMap.invalidateSize();
+        });
+      }
+
+      // =====================================================
+      // 16. BOOTSTRAP
+      // =====================================================
+      document.addEventListener('DOMContentLoaded', () => {
+        bindEvents();
+        refreshLucide();
+        if (state.token && state.role) {
+          enterAuthenticatedWorkspace();
+        } else {
+          showLoginScreen();
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
