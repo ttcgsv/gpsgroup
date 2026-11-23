@@ -112,6 +112,28 @@
     .gis-pin-halo.emerald {
       background: rgba(16, 185, 129, 0.35);
     }
+    .gis-pin-label {
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 2px 7px;
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.95);
+      color: #0F172A;
+      border: 1px solid rgba(217, 119, 6, 0.6);
+      font-family: 'Plus Jakarta Sans', 'Noto Sans TC', sans-serif;
+      font-size: 11px;
+      font-weight: 700;
+      line-height: 1.35;
+      white-space: nowrap;
+      max-width: 168px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      box-shadow: 0 2px 8px rgba(15, 23, 42, 0.22);
+      pointer-events: none;
+      z-index: 3;
+    }
     @keyframes gisPulse {
       0% { transform: scale(0.85); opacity: 0.9; }
       70% { transform: scale(1.75); opacity: 0; }
@@ -1303,7 +1325,7 @@
         });
       }
 
-      function createPinIcon(mode) {
+      function createPinIcon(mode, labelText = '') {
         // mode: 'default' | 'scheduled' | 'amber' | 'emerald' | 'dim'
         let fill = '#0F4C81';
         let size = 30;
@@ -1327,6 +1349,10 @@
           opacity = 0.36;
         }
 
+        const labelHtml = mode === 'amber' && labelText
+          ? `<span class="gis-pin-label">${escapeHtml(labelText)}</span>`
+          : '';
+
         const html = `
           <div class="gis-pin" style="width:${size}px;height:${size}px;opacity:${opacity};">
             ${haloHtml}
@@ -1334,6 +1360,7 @@
               <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" fill="${fill}" stroke="#FFFFFF" stroke-width="2"/>
               <circle cx="12" cy="9" r="2.8" fill="#FFFFFF"/>
             </svg>
+            ${labelHtml}
           </div>
         `;
         return L.divIcon({
@@ -1426,7 +1453,7 @@
           }
 
           const marker = L.marker([loc._lat, loc._lng], {
-            icon: createPinIcon(pinMode),
+            icon: createPinIcon(pinMode, pinMode === 'amber' ? loc.name : ''),
             zIndexOffset: pinMode === 'emerald' ? 1000 : pinMode === 'amber' ? 700 : pinMode === 'scheduled' ? 300 : 0,
           });
 
