@@ -1,6 +1,8 @@
 {
-  "name": "人員工作分配與 Web GIS 導航系統",
+  "name": "Remix Remix GPS 人員工作分配與 Web GIS 導航系統-加組別-AI呆掉了再設分支",
   "description": "整合團隊人力調度、月／日曆排程連動與 TWD97 Web GIS 空間定位及 Google Maps 一鍵導航之系統。",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }
